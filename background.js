@@ -81,7 +81,7 @@ async function updateCsrfRules() {
   ];
 
   await chrome.declarativeNetRequest.updateDynamicRules({ removeRuleIds, addRules });
-  console.log('[TweetDeckX] CSRF rules updated, ct0 length:', ct0.length);
+  // console.log('[TweetDeckX] CSRF rules updated, ct0 length:', ct0.length);
 }
 
 // Update rules on startup
