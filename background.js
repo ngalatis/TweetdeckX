@@ -87,10 +87,14 @@ async function updateCsrfRules() {
 // Update rules on startup
 updateCsrfRules();
 
-// Update rules whenever x.com cookies change
+// Update rules whenever x.com cookies change (debounced — iframe loads
+// cause dozens of cookie writes; the ct0 token changes on the scale of
+// hours, not milliseconds)
+let csrfDebounceTimer = null;
 chrome.cookies.onChanged.addListener((changeInfo) => {
   if (changeInfo.cookie.domain.includes('x.com')) {
-    updateCsrfRules();
+    clearTimeout(csrfDebounceTimer);
+    csrfDebounceTimer = setTimeout(updateCsrfRules, 1000);
   }
 });
 
