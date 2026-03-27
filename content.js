@@ -118,6 +118,9 @@
     if (e.data && e.data.type === 'tweetdeckx-set-column-width') {
       document.documentElement.style.setProperty('--tweetdeckx-col-width', e.data.width + 'px');
     }
+    if (e.data && e.data.type === 'tweetdeckx-back') {
+      window.history.back();
+    }
   });
 
   // Cross-origin detection fallback

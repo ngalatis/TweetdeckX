@@ -469,7 +469,7 @@
       } else if (action === 'back') {
         const iframe = colEl.querySelector('iframe');
         if (iframe) {
-          try { iframe.contentWindow.history.back(); } catch (e) {}
+          try { iframe.contentWindow.postMessage({ type: 'tweetdeckx-back' }, '*'); } catch (e) {}
         }
       } else if (action === 'refresh') {
         const iframe = colEl.querySelector('iframe');
