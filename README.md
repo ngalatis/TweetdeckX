@@ -27,6 +27,11 @@ A free, open-source Chrome extension that brings back the TweetDeck-style multi-
 3. Click the **+** button in the sidebar to add columns
 4. Drag columns in the sidebar to reorder them
 
+## Known Issues
+
+- X likes to rate limit the shit out of its normal users. Since we're using the simplest form of X timeline we can sometimes hit those rate limits. I'm trying to mitigate this as best as I can but you should be aware if you are a power user with a shit ton of columns.
+
+
 ## Reporting Bugs
 
 Found a bug? Please [open an issue](../../issues) on GitHub with:
