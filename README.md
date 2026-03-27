@@ -22,6 +22,13 @@ A free, open-source Chrome extension that brings back the TweetDeck-style multi-
 4. Click **Load unpacked** and select the project folder
 5. Click the TweetDeckX icon in the toolbar to open the multi-column view
 
+## Updating
+
+1. `git pull` (or download the latest release on the same folder)
+2. Open `chrome://extensions`
+3. Click the reload button on the TweetDeckX extension
+4. Close and reopen the deck tab
+
 ## Usage
 
 1. Make sure you are logged in to [x.com](https://x.com) in the same browser
