@@ -707,6 +707,7 @@
     const iframe = document.createElement('iframe');
     iframe.className = 'column-frame';
     iframe.sandbox = 'allow-same-origin allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox';
+    iframe.allow = 'autoplay; encrypted-media; fullscreen';
     iframe.src = getColumnUrl(col.type, col.param);
     iframe.loading = 'lazy';
 
