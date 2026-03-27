@@ -40,6 +40,7 @@
     refresh:  '<svg width="14" height="14" viewBox="0 0 24 24" fill="none"><polyline points="23 4 23 10 17 10" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>',
     close:    '<svg width="14" height="14" viewBox="0 0 24 24" fill="none"><line x1="18" y1="6" x2="6" y2="18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><line x1="6" y1="6" x2="18" y2="18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>',
     move:     '<svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M5 12h14M12 5l7 7-7 7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+    back:     '<svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M19 12H5M12 19l-7-7 7-7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>',
   };
 
   // -----------------------------------------
@@ -442,6 +443,9 @@
           </div>
         </div>
         <div class="column-header-right">
+          <button class="col-btn" data-action="back" title="Back">
+            ${ICONS.back}
+          </button>
           <button class="col-btn" data-action="refresh" title="Refresh">
             ${ICONS.refresh}
           </button>
@@ -462,6 +466,11 @@
       const action = btn.dataset.action;
       if (action === 'close') {
         removeColumn(col.id);
+      } else if (action === 'back') {
+        const iframe = colEl.querySelector('iframe');
+        if (iframe) {
+          try { iframe.contentWindow.history.back(); } catch (e) {}
+        }
       } else if (action === 'refresh') {
         const iframe = colEl.querySelector('iframe');
         if (iframe) {
