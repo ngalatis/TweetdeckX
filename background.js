@@ -81,16 +81,20 @@ async function updateCsrfRules() {
   ];
 
   await chrome.declarativeNetRequest.updateDynamicRules({ removeRuleIds, addRules });
-  console.log('[TweetDeckX] CSRF rules updated, ct0 length:', ct0.length);
+  // console.log('[TweetDeckX] CSRF rules updated, ct0 length:', ct0.length);
 }
 
 // Update rules on startup
 updateCsrfRules();
 
-// Update rules whenever x.com cookies change
+// Update rules whenever x.com cookies change (debounced — iframe loads
+// cause dozens of cookie writes; the ct0 token changes on the scale of
+// hours, not milliseconds)
+let csrfDebounceTimer = null;
 chrome.cookies.onChanged.addListener((changeInfo) => {
   if (changeInfo.cookie.domain.includes('x.com')) {
-    updateCsrfRules();
+    clearTimeout(csrfDebounceTimer);
+    csrfDebounceTimer = setTimeout(updateCsrfRules, 1000);
   }
 });
 
@@ -119,12 +123,12 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   }
 });
 
-// Log when rules are matched (for debugging)
-if (chrome.declarativeNetRequest.onRuleMatchedDebug) {
-  chrome.declarativeNetRequest.onRuleMatchedDebug.addListener((info) => {
-    console.log('Rule matched:', info.request.url, 'Rule ID:', info.rule.ruleId, 'Type:', info.request.type);
-  });
-}
+// Log when rules are matched (for debugging — uncomment when needed)
+// if (chrome.declarativeNetRequest.onRuleMatchedDebug) {
+//   chrome.declarativeNetRequest.onRuleMatchedDebug.addListener((info) => {
+//     console.log('Rule matched:', info.request.url, 'Rule ID:', info.rule.ruleId, 'Type:', info.request.type);
+//   });
+// }
 
 // -------------------------------------------------------
 // Rate limit (429) detection

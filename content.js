@@ -1,90 +1,11 @@
 // TweetDeckX Content Script
-// Runs at document_start to intercept X.com's frame-detection before their JS loads.
+// Runs at document_start in the ISOLATED world.
+// Frame-busting defeat and interval pause/resume are handled by
+// page-context.js (MAIN world, registered separately in manifest.json).
 
 (function () {
   // Only apply in iframe context (not when user visits x.com normally)
   if (window === window.top) return;
-
-  // -------------------------------------------------------
-  // PHASE 1: Inject frame-busting override IMMEDIATELY
-  // This must run before any of X.com's scripts execute.
-  // We spoof window.top/parent/frameElement so X.com thinks
-  // it's the top-level window.
-  // -------------------------------------------------------
-
-  const spoofScript = document.createElement('script');
-  spoofScript.textContent = `
-    try {
-      Object.defineProperty(window, 'top', {
-        get: function() { return window.self; },
-        configurable: false
-      });
-      Object.defineProperty(window, 'parent', {
-        get: function() { return window.self; },
-        configurable: false
-      });
-      Object.defineProperty(window, 'frameElement', {
-        get: function() { return null; },
-        configurable: false
-      });
-    } catch(e) {}
-
-    // Block any calls to window.top.location.replace or similar
-    // Since top === self now, any redirect targets itself (no-op).
-
-    // --- Interval pause/resume for rate limit mitigation ---
-    (function() {
-      var _intervals = {};
-      var _nextId = 1;
-      var _paused = false;
-      var _origSetInterval = window.setInterval;
-      var _origClearInterval = window.clearInterval;
-
-      window.setInterval = function(fn, delay) {
-        var id = _nextId++;
-        var args = Array.prototype.slice.call(arguments, 2);
-        if (!_paused) {
-          var realId = _origSetInterval.apply(window, [fn, delay].concat(args));
-          _intervals[id] = { fn: fn, delay: delay, args: args, realId: realId };
-        } else {
-          _intervals[id] = { fn: fn, delay: delay, args: args, realId: null };
-        }
-        return id;
-      };
-
-      window.clearInterval = function(id) {
-        var entry = _intervals[id];
-        if (entry && entry.realId !== null) {
-          _origClearInterval(entry.realId);
-        }
-        delete _intervals[id];
-      };
-
-      window.addEventListener('message', function(e) {
-        if (!e.data) return;
-        if (e.data.type === 'tweetdeckx-pause') {
-          _paused = true;
-          for (var id in _intervals) {
-            if (_intervals[id].realId !== null) {
-              _origClearInterval(_intervals[id].realId);
-              _intervals[id].realId = null;
-            }
-          }
-        } else if (e.data.type === 'tweetdeckx-resume') {
-          _paused = false;
-          for (var id in _intervals) {
-            var entry = _intervals[id];
-            if (entry.realId === null) {
-              entry.realId = _origSetInterval.apply(window, [entry.fn, entry.delay].concat(entry.args));
-            }
-          }
-        }
-      });
-    })();
-  `;
-
-  // Prepend to <html> so it runs before anything in <head>
-  (document.documentElement || document).prepend(spoofScript);
 
   // -------------------------------------------------------
   // PHASE 1b: Inject first-party cookies into this iframe

@@ -205,5 +205,23 @@
       "urlFilter": "user_flow.json",
       "resourceTypes": ["xmlhttprequest"]
     }
+  },
+  {
+    "id": 9,
+    "priority": 3,
+    "action": { "type": "block" },
+    "condition": {
+      "urlFilter": "promoted_content/log.json",
+      "resourceTypes": ["xmlhttprequest"]
+    }
+  },
+  {
+    "id": 10,
+    "priority": 3,
+    "action": { "type": "block" },
+    "condition": {
+      "urlFilter": "dm/user_updates.json",
+      "resourceTypes": ["xmlhttprequest"]
+    }
   }
 ]
