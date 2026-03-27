@@ -87,6 +87,84 @@
   };
 
   // -----------------------------------------
+  // LRU page cache
+  // -----------------------------------------
+
+  const pageCache = new Map();
+  const PAGE_CACHE_MAX = 10;
+
+  function evictLruPages() {
+    while (pageCache.size > PAGE_CACHE_MAX) {
+      let oldestKey = null;
+      let oldestTime = Infinity;
+      for (const [key, entry] of pageCache) {
+        if (entry.lastAccessed < oldestTime) {
+          oldestTime = entry.lastAccessed;
+          oldestKey = key;
+        }
+      }
+      if (oldestKey) {
+        const entry = pageCache.get(oldestKey);
+        entry.container.querySelectorAll('iframe').forEach(f => f.remove());
+        pageCache.delete(oldestKey);
+      }
+    }
+  }
+
+  function cacheCurrentPage() {
+    if (!state.activePageId) return;
+    const wrapper = document.createElement('div');
+    while (columnsScroll.firstChild) {
+      wrapper.appendChild(columnsScroll.firstChild);
+    }
+    pageCache.set(state.activePageId, { container: wrapper, lastAccessed: Date.now() });
+    evictLruPages();
+  }
+
+  function restoreFromCache(pageId) {
+    const entry = pageCache.get(pageId);
+    if (!entry) return false;
+    columnsScroll.innerHTML = '';
+    while (entry.container.firstChild) {
+      columnsScroll.appendChild(entry.container.firstChild);
+    }
+    entry.lastAccessed = Date.now();
+    pageCache.delete(pageId); // remove from cache since it's now live
+    emptyState.classList.add('hidden');
+    return true;
+  }
+
+  function invalidateCache(pageId) {
+    const entry = pageCache.get(pageId);
+    if (!entry) return;
+    entry.container.querySelectorAll('iframe').forEach(f => f.remove());
+    pageCache.delete(pageId);
+  }
+
+  function clearAllCache() {
+    for (const [, entry] of pageCache) {
+      entry.container.querySelectorAll('iframe').forEach(f => f.remove());
+    }
+    pageCache.clear();
+  }
+
+  // -----------------------------------------
+  // Stagger & rate-limit state
+  // -----------------------------------------
+
+  let pendingStaggerTimers = [];
+  let isRateLimited = false;
+
+  function cancelPendingLoads() {
+    pendingStaggerTimers.forEach(id => clearTimeout(id));
+    pendingStaggerTimers = [];
+  }
+
+  function randomStagger() {
+    return 1000 + Math.random() * 1000;
+  }
+
+  // -----------------------------------------
   // DOM refs
   // -----------------------------------------
 
@@ -111,6 +189,8 @@
   const pageNameInput = document.getElementById('page-name-input');
   const btnPageSave = document.getElementById('btn-page-save');
   const btnPageDelete = document.getElementById('btn-page-delete');
+
+  const rateLimitToast = document.getElementById('rate-limit-toast');
 
   const settingsOverlay = document.getElementById('settings-overlay');
   const colWidthSlider = document.getElementById('col-width-slider');
@@ -254,9 +334,11 @@
 
   function switchPage(pageId) {
     if (pageId === state.activePageId) return;
+    cacheCurrentPage();
     state.activePageId = pageId;
     saveState();
     renderSidebar();
+    if (restoreFromCache(pageId)) return;
     renderColumns();
   }
 
@@ -275,9 +357,108 @@
   // Column rendering
   // -----------------------------------------
 
+  function createColumnElement(col) {
+    const colEl = document.createElement('div');
+    colEl.className = 'deck-column';
+    colEl.dataset.id = col.id;
+    colEl.style.setProperty('--column-width', state.settings.columnWidth + 'px');
+    colEl.style.flex = `0 0 ${state.settings.columnWidth}px`;
+    colEl.style.width = state.settings.columnWidth + 'px';
+
+    const typeDef = COLUMN_TYPES[col.type] || COLUMN_TYPES.home;
+    const iconSvg = ICONS[typeDef.icon] || ICONS.home;
+
+    const moveBtn = state.pages.length > 1
+      ? `<button class="col-btn" data-action="move" title="Move to another page">${ICONS.move}</button>`
+      : '';
+
+    colEl.innerHTML = `
+      <div class="column-header" draggable="true" data-col-id="${col.id}">
+        <div class="column-header-left">
+          <span class="column-icon">${iconSvg}</span>
+          <div>
+            <div class="column-title">${escapeHtml(col.title || getColumnTitle(col.type, col.param))}</div>
+            ${col.param ? `<div class="column-subtitle">${escapeHtml(col.type)}</div>` : ''}
+          </div>
+        </div>
+        <div class="column-header-right">
+          <button class="col-btn" data-action="refresh" title="Refresh">
+            ${ICONS.refresh}
+          </button>
+          ${moveBtn}
+          <button class="col-btn danger" data-action="close" title="Remove column">
+            ${ICONS.close}
+          </button>
+        </div>
+      </div>
+      <div class="column-loading"><div class="spinner"></div></div>
+    `;
+
+    // Column header button handlers
+    colEl.addEventListener('click', (e) => {
+      const btn = e.target.closest('[data-action]');
+      if (!btn) return;
+
+      const action = btn.dataset.action;
+      if (action === 'close') {
+        removeColumn(col.id);
+      } else if (action === 'refresh') {
+        const iframe = colEl.querySelector('iframe');
+        if (iframe) {
+          iframe.src = iframe.src;
+        }
+      } else if (action === 'move') {
+        toggleMoveDropdown(colEl, col.id);
+      }
+    });
+
+    // Column drag-and-drop
+    const header = colEl.querySelector('.column-header');
+    setupColumnDragDrop(header, colEl, col.id);
+
+    return colEl;
+  }
+
+  function loadIframeForColumn(colEl, col) {
+    const loadingEl = colEl.querySelector('.column-loading');
+    if (!loadingEl) return;
+
+    const iframe = document.createElement('iframe');
+    iframe.className = 'column-frame';
+    iframe.sandbox = 'allow-same-origin allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox';
+    iframe.src = getColumnUrl(col.type, col.param);
+    iframe.loading = 'lazy';
+
+    iframe.addEventListener('load', () => {
+      try {
+        iframe.contentWindow.postMessage({ type: 'tweetdeckx-init' }, '*');
+        iframe.contentWindow.postMessage({
+          type: 'tweetdeckx-set-column-width',
+          width: state.settings.columnWidth
+        }, '*');
+      } catch (e) {
+        // Cross-origin, content script handles it
+      }
+    });
+
+    loadingEl.replaceWith(iframe);
+    delete colEl.dataset.needsLoad;
+  }
+
+  function createTrailingAddButton() {
+    const trailing = document.createElement('div');
+    trailing.className = 'add-column-trailing';
+    trailing.innerHTML = '<button class="add-column-circle" title="Add column">+</button>';
+    trailing.querySelector('.add-column-circle').addEventListener('click', () => {
+      openAddColumnModal();
+    });
+    return trailing;
+  }
+
   function renderColumns() {
     columnsScroll.innerHTML = '';
     closeAllDropdowns();
+    cancelPendingLoads();
 
     const page = getActivePage();
 
@@ -298,101 +479,43 @@
     emptyState.classList.add('hidden');
 
     page.columns.forEach((col, index) => {
-      const colEl = document.createElement('div');
-      colEl.className = 'deck-column';
-      colEl.dataset.id = col.id;
-      colEl.style.setProperty('--column-width', state.settings.columnWidth + 'px');
-      colEl.style.flex = `0 0 ${state.settings.columnWidth}px`;
-      colEl.style.width = state.settings.columnWidth + 'px';
+      const colEl = createColumnElement(col);
 
-      const typeDef = COLUMN_TYPES[col.type] || COLUMN_TYPES.home;
-      const iconSvg = ICONS[typeDef.icon] || ICONS.home;
-
-      const moveBtn = state.pages.length > 1
-        ? `<button class="col-btn" data-action="move" title="Move to another page">${ICONS.move}</button>`
-        : '';
-
-      colEl.innerHTML = `
-        <div class="column-header" draggable="true" data-col-id="${col.id}">
-          <div class="column-header-left">
-            <span class="column-icon">${iconSvg}</span>
-            <div>
-              <div class="column-title">${escapeHtml(col.title || getColumnTitle(col.type, col.param))}</div>
-              ${col.param ? `<div class="column-subtitle">${escapeHtml(col.type)}</div>` : ''}
-            </div>
-          </div>
-          <div class="column-header-right">
-            <button class="col-btn" data-action="refresh" title="Refresh">
-              ${ICONS.refresh}
-            </button>
-            ${moveBtn}
-            <button class="col-btn danger" data-action="close" title="Remove column">
-              ${ICONS.close}
-            </button>
-          </div>
-        </div>
-        <div class="column-loading"><div class="spinner"></div></div>
-      `;
-
-      // Staggered iframe creation
-      setTimeout(() => {
-        const loadingEl = colEl.querySelector('.column-loading');
-        if (loadingEl) {
-          const iframe = document.createElement('iframe');
-          iframe.className = 'column-frame';
-          iframe.sandbox = 'allow-same-origin allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox';
-          iframe.src = getColumnUrl(col.type, col.param);
-          iframe.loading = 'lazy';
-
-          iframe.addEventListener('load', () => {
-            try {
-              iframe.contentWindow.postMessage({ type: 'tweetdeckx-init' }, '*');
-              iframe.contentWindow.postMessage({
-                type: 'tweetdeckx-set-column-width',
-                width: state.settings.columnWidth
-              }, '*');
-            } catch (e) {
-              // Cross-origin, content script handles it
-            }
-          });
-
-          loadingEl.replaceWith(iframe);
-        }
-      }, index * 200);
-
-      // Column header button handlers
-      colEl.addEventListener('click', (e) => {
-        const btn = e.target.closest('[data-action]');
-        if (!btn) return;
-
-        const action = btn.dataset.action;
-        if (action === 'close') {
-          removeColumn(col.id);
-        } else if (action === 'refresh') {
-          const iframe = colEl.querySelector('iframe');
-          if (iframe) {
-            iframe.src = iframe.src;
-          }
-        } else if (action === 'move') {
-          toggleMoveDropdown(colEl, col.id);
-        }
-      });
-
-      // Column drag-and-drop
-      const header = colEl.querySelector('.column-header');
-      setupColumnDragDrop(header, colEl, col.id);
+      if (index === 0) {
+        loadIframeForColumn(colEl, col);
+      } else {
+        colEl.dataset.needsLoad = 'true';
+      }
 
       columnsScroll.appendChild(colEl);
     });
 
-    // Trailing add-column button
-    const trailing = document.createElement('div');
-    trailing.className = 'add-column-trailing';
-    trailing.innerHTML = '<button class="add-column-circle" title="Add column">+</button>';
-    trailing.querySelector('.add-column-circle').addEventListener('click', () => {
-      openAddColumnModal();
-    });
-    columnsScroll.appendChild(trailing);
+    // Lazy-load remaining columns as they scroll into view
+    const lazyColumns = columnsScroll.querySelectorAll('[data-needs-load="true"]');
+    if (lazyColumns.length > 0) {
+      let staggerDelay = 0;
+      const observer = new IntersectionObserver((entries) => {
+        entries.forEach((entry) => {
+          if (!entry.isIntersecting) return;
+          const el = entry.target;
+          observer.unobserve(el);
+          staggerDelay += randomStagger();
+          const colData = page.columns.find(c => c.id === el.dataset.id);
+          if (colData) {
+            const timerId = setTimeout(() => {
+              if (!isRateLimited) {
+                loadIframeForColumn(el, colData);
+              }
+            }, staggerDelay);
+            pendingStaggerTimers.push(timerId);
+          }
+        });
+      }, { root: columnsContainer, threshold: 0.1 });
+
+      lazyColumns.forEach(el => observer.observe(el));
+    }
+
+    columnsScroll.appendChild(createTrailingAddButton());
   }
 
   // -----------------------------------------
@@ -408,15 +531,26 @@
     const col = { id, type, param: param || null, title };
     page.columns.push(col);
     saveState();
-    renderColumns();
+
+    // If this is the first column, transition from empty state
+    if (page.columns.length === 1) {
+      renderColumns();
+      return;
+    }
+
+    // Append single column to live DOM without destroying existing iframes
+    const colEl = createColumnElement(col);
+    loadIframeForColumn(colEl, col);
+
+    const trailing = columnsScroll.querySelector('.add-column-trailing');
+    if (trailing) {
+      columnsScroll.insertBefore(colEl, trailing);
+    } else {
+      columnsScroll.appendChild(colEl);
+    }
 
     requestAnimationFrame(() => {
-      setTimeout(() => {
-        const colEl = columnsScroll.querySelector(`[data-id="${id}"]`);
-        if (colEl) {
-          colEl.scrollIntoView({ behavior: 'smooth', inline: 'start', block: 'nearest' });
-        }
-      }, 300);
+      colEl.scrollIntoView({ behavior: 'smooth', inline: 'start', block: 'nearest' });
     });
   }
 
@@ -425,7 +559,19 @@
     if (!page) return;
     page.columns = page.columns.filter(c => c.id !== colId);
     saveState();
-    renderColumns();
+
+    // Remove single column from live DOM without destroying other iframes
+    const colEl = columnsScroll.querySelector(`[data-id="${colId}"]`);
+    if (colEl) {
+      const iframe = colEl.querySelector('iframe');
+      if (iframe) iframe.remove();
+      colEl.remove();
+    }
+
+    // If no columns remain, show empty state
+    if (page.columns.length === 0) {
+      renderColumns();
+    }
   }
 
   function reorderColumns(fromId, toId) {
@@ -547,6 +693,7 @@
 
     const [col] = sourcePage.columns.splice(colIdx, 1);
     targetPage.columns.push(col);
+    invalidateCache(targetPageId);
     saveState();
     renderColumns();
   }
@@ -720,13 +867,17 @@
     page.emoji = emoji;
     saveState();
     renderSidebar();
-    if (pageId === state.activePageId) {
-      renderColumns();
+    // Update empty state text directly instead of re-rendering columns (which destroys live iframes)
+    if (pageId === state.activePageId && (!page.columns || page.columns.length === 0)) {
+      emptyStateEmoji.textContent = page.emoji;
+      emptyStateTitle.textContent = page.name;
+      emptyStateDesc.textContent = `Add columns to this page to start tracking your ${page.name}.`;
     }
   }
 
   function deletePage(pageId) {
     state.pages = state.pages.filter(p => p.id !== pageId);
+    invalidateCache(pageId);
     if (state.activePageId === pageId) {
       state.activePageId = state.pages.length > 0 ? state.pages[0].id : null;
     }
@@ -844,6 +995,7 @@
 
   document.getElementById('btn-reset-pages').addEventListener('click', () => {
     if (confirm('Reset all pages? This will remove all pages and columns and cannot be undone.')) {
+      clearAllCache();
       const defaultPage = {
         id: generateId('page'),
         name: 'Home',
@@ -871,6 +1023,33 @@
       closeAllDropdowns();
     }
   });
+
+  // -----------------------------------------
+  // Rate-limit toast handling
+  // -----------------------------------------
+
+  let rateLimitToastTimer = null;
+
+  function showRateLimitToast() {
+    if (!rateLimitToast.classList.contains('hidden')) return;
+    isRateLimited = true;
+    cancelPendingLoads();
+    rateLimitToast.classList.remove('hidden');
+    clearTimeout(rateLimitToastTimer);
+    rateLimitToastTimer = setTimeout(() => dismissRateLimitToast(), 30000);
+  }
+
+  function dismissRateLimitToast() {
+    rateLimitToast.classList.add('hidden');
+    clearTimeout(rateLimitToastTimer);
+    setTimeout(() => { isRateLimited = false; }, 20000);
+  }
+
+  chrome.runtime.onMessage.addListener((msg) => {
+    if (msg.type === 'tweetdeckx-rate-limited') showRateLimitToast();
+  });
+
+  document.getElementById('toast-close').addEventListener('click', dismissRateLimitToast);
 
   // -----------------------------------------
   // Init
