@@ -720,6 +720,9 @@
     page.emoji = emoji;
     saveState();
     renderSidebar();
+    if (pageId === state.activePageId) {
+      renderColumns();
+    }
   }
 
   function deletePage(pageId) {
