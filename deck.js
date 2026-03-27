@@ -286,7 +286,7 @@
       if (page) {
         emptyStateEmoji.textContent = page.emoji;
         emptyStateTitle.textContent = page.name;
-        emptyStateDesc.textContent = 'This page has no columns yet. Add one to get started.';
+        emptyStateDesc.textContent = `Add columns to this page to start tracking your ${page.name}.`;
       } else {
         emptyStateEmoji.textContent = '📭';
         emptyStateTitle.textContent = 'No pages';
@@ -687,14 +687,12 @@
     if (!page) return;
 
     const hasColumns = page.columns && page.columns.length > 0;
-    const msg = hasColumns
-      ? `Delete "${page.name}"? This page has ${page.columns.length} column(s) that will be removed.`
-      : `Delete "${page.name}"?`;
-
-    if (confirm(msg)) {
-      deletePage(editingPageId);
-      closePageModal();
+    if (hasColumns) {
+      const msg = `Delete "${page.name}"? This page has ${page.columns.length} column(s) that will be removed.`;
+      if (!confirm(msg)) return;
     }
+    deletePage(editingPageId);
+    closePageModal();
   });
 
   // -----------------------------------------
