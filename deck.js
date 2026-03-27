@@ -154,39 +154,32 @@
     return 1000 + Math.random() * 1000;
   }
 
+  let activeColumnId = null; // track which column is polling
+
   function updateActiveColumn() {
-    // Pause ALL iframes everywhere (hidden pages + non-visible columns)
+    // Pause ALL iframes everywhere
     columnsContainer.querySelectorAll('iframe').forEach(function(iframe) {
       try {
         iframe.contentWindow.postMessage({ type: 'tweetdeckx-pause' }, '*');
       } catch (e) {}
     });
 
-    // Resume ONLY the column currently visible in the active page
+    // Resume only the active column (or first column if none set)
     const activeWrapper = getActiveWrapper();
     if (!activeWrapper) return;
 
-    const columns = activeWrapper.querySelectorAll('.deck-column');
-    if (columns.length === 0) return;
+    let targetCol = null;
+    if (activeColumnId) {
+      targetCol = activeWrapper.querySelector(`.deck-column[data-id="${activeColumnId}"]`);
+    }
+    // Fall back to first column if active column not found (e.g. after page switch)
+    if (!targetCol) {
+      targetCol = activeWrapper.querySelector('.deck-column');
+      if (targetCol) activeColumnId = targetCol.dataset.id;
+    }
 
-    // Find the column closest to the viewport center
-    const containerRect = columnsContainer.getBoundingClientRect();
-    const viewportCenter = containerRect.left + containerRect.width / 2;
-    let closestCol = null;
-    let closestDist = Infinity;
-
-    columns.forEach(function(col) {
-      const rect = col.getBoundingClientRect();
-      const colCenter = rect.left + rect.width / 2;
-      const dist = Math.abs(colCenter - viewportCenter);
-      if (dist < closestDist) {
-        closestDist = dist;
-        closestCol = col;
-      }
-    });
-
-    if (closestCol) {
-      const iframe = closestCol.querySelector('iframe');
+    if (targetCol) {
+      const iframe = targetCol.querySelector('iframe');
       if (iframe) {
         try {
           iframe.contentWindow.postMessage({ type: 'tweetdeckx-resume' }, '*');
@@ -195,15 +188,18 @@
     }
   }
 
-  // Debounced version for scroll events
-  let _updateActiveColumnTimer = null;
-  function updateActiveColumnDebounced() {
-    clearTimeout(_updateActiveColumnTimer);
-    _updateActiveColumnTimer = setTimeout(updateActiveColumn, 200);
+  function setActiveColumn(colId) {
+    activeColumnId = colId;
+    updateActiveColumn();
   }
 
-  // Update active column when user scrolls between columns
-  columnsContainer.addEventListener('scroll', updateActiveColumnDebounced);
+  // Listen for clicks on columns to make them the active polling column
+  columnsContainer.addEventListener('click', function(e) {
+    const col = e.target.closest('.deck-column');
+    if (col && col.dataset.id && col.dataset.id !== activeColumnId) {
+      setActiveColumn(col.dataset.id);
+    }
+  });
 
   // -----------------------------------------
   // DOM refs
