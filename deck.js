@@ -87,17 +87,22 @@
   };
 
   // -----------------------------------------
-  // LRU page cache
+  // LRU page cache (display:none approach)
   // -----------------------------------------
 
-  const pageCache = new Map();
+  const pageCache = new Map(); // Map<pageId, { wrapper: HTMLElement, lastAccessed: number }>
   const PAGE_CACHE_MAX = 10;
+
+  function getActiveWrapper() {
+    return columnsContainer.querySelector('.page-wrapper:not(.hidden)') || null;
+  }
 
   function evictLruPages() {
     while (pageCache.size > PAGE_CACHE_MAX) {
       let oldestKey = null;
       let oldestTime = Infinity;
       for (const [key, entry] of pageCache) {
+        if (key === state.activePageId) continue; // never evict the active page
         if (entry.lastAccessed < oldestTime) {
           oldestTime = entry.lastAccessed;
           oldestKey = key;
@@ -105,45 +110,30 @@
       }
       if (oldestKey) {
         const entry = pageCache.get(oldestKey);
-        entry.container.querySelectorAll('iframe').forEach(f => f.remove());
+        if (entry.wrapper.parentNode) {
+          entry.wrapper.remove();
+        }
         pageCache.delete(oldestKey);
+      } else {
+        break; // safety: all remaining entries are the active page
       }
     }
-  }
-
-  function cacheCurrentPage() {
-    if (!state.activePageId) return;
-    const wrapper = document.createElement('div');
-    while (columnsScroll.firstChild) {
-      wrapper.appendChild(columnsScroll.firstChild);
-    }
-    pageCache.set(state.activePageId, { container: wrapper, lastAccessed: Date.now() });
-    evictLruPages();
-  }
-
-  function restoreFromCache(pageId) {
-    const entry = pageCache.get(pageId);
-    if (!entry) return false;
-    columnsScroll.innerHTML = '';
-    while (entry.container.firstChild) {
-      columnsScroll.appendChild(entry.container.firstChild);
-    }
-    entry.lastAccessed = Date.now();
-    pageCache.delete(pageId); // remove from cache since it's now live
-    emptyState.classList.add('hidden');
-    return true;
   }
 
   function invalidateCache(pageId) {
     const entry = pageCache.get(pageId);
     if (!entry) return;
-    entry.container.querySelectorAll('iframe').forEach(f => f.remove());
+    if (entry.wrapper.parentNode) {
+      entry.wrapper.remove();
+    }
     pageCache.delete(pageId);
   }
 
   function clearAllCache() {
     for (const [, entry] of pageCache) {
-      entry.container.querySelectorAll('iframe').forEach(f => f.remove());
+      if (entry.wrapper.parentNode) {
+        entry.wrapper.remove();
+      }
     }
     pageCache.clear();
   }
@@ -169,7 +159,6 @@
   // -----------------------------------------
 
   const pageNav = document.getElementById('page-nav');
-  const columnsScroll = document.getElementById('columns-scroll');
   const columnsContainer = document.getElementById('columns-container');
   const emptyState = document.getElementById('empty-state');
   const emptyStateEmoji = document.getElementById('empty-state-emoji');
@@ -334,11 +323,33 @@
 
   function switchPage(pageId) {
     if (pageId === state.activePageId) return;
-    cacheCurrentPage();
+
+    // Hide current page wrapper
+    const currentWrapper = getActiveWrapper();
+    if (currentWrapper) {
+      currentWrapper.classList.add('hidden');
+    }
+
+    // Update last accessed for current page in cache
+    if (state.activePageId && pageCache.has(state.activePageId)) {
+      pageCache.get(state.activePageId).lastAccessed = Date.now();
+    }
+
     state.activePageId = pageId;
     saveState();
     renderSidebar();
-    if (restoreFromCache(pageId)) return;
+
+    // Check if target page has a cached wrapper in the DOM
+    const cachedEntry = pageCache.get(pageId);
+    if (cachedEntry && cachedEntry.wrapper.parentNode === columnsContainer) {
+      // Cache hit — just show it
+      cachedEntry.wrapper.classList.remove('hidden');
+      cachedEntry.lastAccessed = Date.now();
+      emptyState.classList.add('hidden');
+      return;
+    }
+
+    // Cache miss — cold load
     renderColumns();
   }
 
@@ -456,13 +467,17 @@
   }
 
   function renderColumns() {
-    columnsScroll.innerHTML = '';
     closeAllDropdowns();
     cancelPendingLoads();
 
     const page = getActivePage();
 
+    // Handle empty state
     if (!page || !page.columns || page.columns.length === 0) {
+      // Hide any active wrapper
+      const activeWrapper = getActiveWrapper();
+      if (activeWrapper) activeWrapper.classList.add('hidden');
+
       emptyState.classList.remove('hidden');
       if (page) {
         emptyStateEmoji.textContent = page.emoji;
@@ -478,20 +493,36 @@
 
     emptyState.classList.add('hidden');
 
+    // Remove old wrapper for this page if it exists (cold load means we rebuild)
+    const oldWrapper = columnsContainer.querySelector(`.page-wrapper[data-page-id="${page.id}"]`);
+    if (oldWrapper) {
+      oldWrapper.remove();
+      pageCache.delete(page.id);
+    }
+
+    // Create new wrapper
+    const wrapper = document.createElement('div');
+    wrapper.className = 'page-wrapper';
+    wrapper.dataset.pageId = page.id;
+    columnsContainer.appendChild(wrapper);
+
+    // Register in cache
+    pageCache.set(page.id, { wrapper, lastAccessed: Date.now() });
+    evictLruPages();
+
+    // Create columns with stagger
     page.columns.forEach((col, index) => {
       const colEl = createColumnElement(col);
-
-      if (index === 0) {
+      if (index === 0 && !isRateLimited) {
         loadIframeForColumn(colEl, col);
       } else {
         colEl.dataset.needsLoad = 'true';
       }
-
-      columnsScroll.appendChild(colEl);
+      wrapper.appendChild(colEl);
     });
 
     // Lazy-load remaining columns as they scroll into view
-    const lazyColumns = columnsScroll.querySelectorAll('[data-needs-load="true"]');
+    const lazyColumns = wrapper.querySelectorAll('[data-needs-load="true"]');
     if (lazyColumns.length > 0) {
       let staggerDelay = 0;
       const observer = new IntersectionObserver((entries) => {
@@ -515,7 +546,7 @@
       lazyColumns.forEach(el => observer.observe(el));
     }
 
-    columnsScroll.appendChild(createTrailingAddButton());
+    wrapper.appendChild(createTrailingAddButton());
   }
 
   // -----------------------------------------
@@ -542,11 +573,17 @@
     const colEl = createColumnElement(col);
     loadIframeForColumn(colEl, col);
 
-    const trailing = columnsScroll.querySelector('.add-column-trailing');
+    const wrapper = getActiveWrapper();
+    if (!wrapper) {
+      renderColumns();
+      return;
+    }
+
+    const trailing = wrapper.querySelector('.add-column-trailing');
     if (trailing) {
-      columnsScroll.insertBefore(colEl, trailing);
+      wrapper.insertBefore(colEl, trailing);
     } else {
-      columnsScroll.appendChild(colEl);
+      wrapper.appendChild(colEl);
     }
 
     requestAnimationFrame(() => {
@@ -561,11 +598,14 @@
     saveState();
 
     // Remove single column from live DOM without destroying other iframes
-    const colEl = columnsScroll.querySelector(`[data-id="${colId}"]`);
-    if (colEl) {
-      const iframe = colEl.querySelector('iframe');
-      if (iframe) iframe.remove();
-      colEl.remove();
+    const wrapper = getActiveWrapper();
+    if (wrapper) {
+      const colEl = wrapper.querySelector(`[data-id="${colId}"]`);
+      if (colEl) {
+        const iframe = colEl.querySelector('iframe');
+        if (iframe) iframe.remove();
+        colEl.remove();
+      }
     }
 
     // If no columns remain, show empty state
@@ -585,7 +625,21 @@
     const [moved] = page.columns.splice(fromIdx, 1);
     page.columns.splice(toIdx, 0, moved);
     saveState();
-    renderColumns();
+
+    // Reorder DOM nodes within the wrapper without destroying iframes
+    const wrapper = getActiveWrapper();
+    if (!wrapper) return;
+
+    const fromEl = wrapper.querySelector(`[data-id="${fromId}"]`);
+    const toEl = wrapper.querySelector(`[data-id="${toId}"]`);
+    if (!fromEl || !toEl) return;
+
+    // If the dragged element was before the target, insert after; otherwise insert before
+    if (fromIdx < toIdx) {
+      wrapper.insertBefore(fromEl, toEl.nextSibling);
+    } else {
+      wrapper.insertBefore(fromEl, toEl);
+    }
   }
 
   // -----------------------------------------
@@ -693,9 +747,26 @@
 
     const [col] = sourcePage.columns.splice(colIdx, 1);
     targetPage.columns.push(col);
+
+    // Remove the column element from the active wrapper's DOM
+    const wrapper = getActiveWrapper();
+    if (wrapper) {
+      const colEl = wrapper.querySelector(`[data-id="${colId}"]`);
+      if (colEl) {
+        const iframe = colEl.querySelector('iframe');
+        if (iframe) iframe.remove();
+        colEl.remove();
+      }
+    }
+
+    // Invalidate the target page's cache so it rebuilds with the new column
     invalidateCache(targetPageId);
     saveState();
-    renderColumns();
+
+    // If no columns remain on the source page, show empty state
+    if (sourcePage.columns.length === 0) {
+      renderColumns();
+    }
   }
 
   // -----------------------------------------
@@ -847,6 +918,15 @@
   // -----------------------------------------
 
   function createPage(name, emoji) {
+    // Hide current wrapper before switching
+    const currentWrapper = getActiveWrapper();
+    if (currentWrapper) {
+      currentWrapper.classList.add('hidden');
+    }
+    if (state.activePageId && pageCache.has(state.activePageId)) {
+      pageCache.get(state.activePageId).lastAccessed = Date.now();
+    }
+
     const page = {
       id: generateId('page'),
       name: name,
@@ -876,8 +956,9 @@
   }
 
   function deletePage(pageId) {
-    state.pages = state.pages.filter(p => p.id !== pageId);
+    // Remove the page's wrapper from DOM
     invalidateCache(pageId);
+    state.pages = state.pages.filter(p => p.id !== pageId);
     if (state.activePageId === pageId) {
       state.activePageId = state.pages.length > 0 ? state.pages[0].id : null;
     }
@@ -1051,7 +1132,9 @@
   function resumePausedLoads() {
     const page = getActivePage();
     if (!page) return;
-    const unloaded = columnsScroll.querySelectorAll('.column-loading');
+    const wrapper = getActiveWrapper();
+    if (!wrapper) return;
+    const unloaded = wrapper.querySelectorAll('.column-loading');
     let delay = 0;
     unloaded.forEach((loadingEl) => {
       const colEl = loadingEl.closest('.deck-column');

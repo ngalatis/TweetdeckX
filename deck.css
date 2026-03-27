@@ -216,10 +216,14 @@ html, body {
   border-radius: 3px;
 }
 
-#columns-scroll {
+.page-wrapper {
   display: flex;
   height: 100%;
   gap: var(--column-gap);
+}
+
+.page-wrapper.hidden {
+  display: none;
 }
 
 /* =========================================
