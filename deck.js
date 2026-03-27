@@ -193,14 +193,6 @@
     updateActiveColumn();
   }
 
-  // Listen for clicks on columns to make them the active polling column
-  columnsContainer.addEventListener('click', function(e) {
-    const col = e.target.closest('.deck-column');
-    if (col && col.dataset.id && col.dataset.id !== activeColumnId) {
-      setActiveColumn(col.dataset.id);
-    }
-  });
-
   // -----------------------------------------
   // DOM refs
   // -----------------------------------------
@@ -232,6 +224,14 @@
   const colWidthSlider = document.getElementById('col-width-slider');
   const colWidthValue = document.getElementById('col-width-value');
   const themeSelect = document.getElementById('theme-select');
+
+  // Listen for clicks on columns to make them the active polling column
+  columnsContainer.addEventListener('click', function(e) {
+    const col = e.target.closest('.deck-column');
+    if (col && col.dataset.id && col.dataset.id !== activeColumnId) {
+      setActiveColumn(col.dataset.id);
+    }
+  });
 
   // -----------------------------------------
   // Persistence (chrome.storage.local)
