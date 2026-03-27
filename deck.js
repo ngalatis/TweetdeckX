@@ -290,6 +290,15 @@
         resetIdleTimer();
       }
     });
+
+    // Scroll over column → activate it (natural interaction)
+    colEl.addEventListener('wheel', () => {
+      if (activeColumnId !== colId) {
+        activateColumn(colId);
+      } else {
+        resetIdleTimer();
+      }
+    }, { passive: true });
   }
 
   // -----------------------------------------
@@ -741,6 +750,7 @@
     // Append single column to live DOM without destroying existing iframes
     const colEl = createColumnElement(col);
     loadIframeForColumn(colEl, col);
+    resetRefreshTimer(col.id);
 
     const wrapper = getActiveWrapper();
     if (!wrapper) {
@@ -765,6 +775,16 @@
     if (!page) return;
     page.columns = page.columns.filter(c => c.id !== colId);
     saveState();
+
+    // Clean up timers for this column
+    if (activeColumnId === colId) {
+      deactivateActiveColumn();
+    }
+    const timer = refreshTimers.get(colId);
+    if (timer) {
+      clearInterval(timer);
+      refreshTimers.delete(colId);
+    }
 
     // Remove single column from live DOM without destroying other iframes
     const wrapper = getActiveWrapper();
@@ -916,6 +936,16 @@
 
     const [col] = sourcePage.columns.splice(colIdx, 1);
     targetPage.columns.push(col);
+
+    // Clean up timers for this column
+    if (activeColumnId === colId) {
+      deactivateActiveColumn();
+    }
+    const timer = refreshTimers.get(colId);
+    if (timer) {
+      clearInterval(timer);
+      refreshTimers.delete(colId);
+    }
 
     // Remove the column element from the active wrapper's DOM
     const wrapper = getActiveWrapper();
@@ -1245,6 +1275,7 @@
 
   document.getElementById('btn-reset-pages').addEventListener('click', () => {
     if (confirm('Reset all pages? This will remove all pages and columns and cannot be undone.')) {
+      deactivateActiveColumn();
       clearAllCache();
       const defaultPage = {
         id: generateId('page'),
