@@ -740,7 +740,7 @@
           type: 'tweetdeckx-set-hide-ads',
           enabled: state.settings.hideAds,
         }, '*');
-      } catch (e) {}
+      } catch (e) { /* Cross-origin — content script handles it */ }
     });
   }
 

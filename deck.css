@@ -716,12 +716,9 @@ html, body {
    ========================================= */
 
 .emoji-picker {
-  position: absolute;
-  top: 100%;
-  left: 0;
-  margin-top: 6px;
-  width: 260px;
-  max-height: 280px;
+  position: fixed;
+  width: 320px;
+  max-height: 380px;
   overflow-y: auto;
   background: var(--bg-surface);
   border: 1px solid var(--border-color);
@@ -733,6 +730,21 @@ html, body {
   scrollbar-color: var(--text-muted) transparent;
 }
 .emoji-picker.hidden { display: none; }
+.emoji-picker-search {
+  width: 100%;
+  height: 32px;
+  padding: 0 10px;
+  margin-bottom: 8px;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  font-size: 13px;
+  outline: none;
+  font-family: inherit;
+}
+.emoji-picker-search:focus { border-color: var(--accent); }
+.emoji-picker-search::placeholder { color: var(--text-muted); }
 .emoji-picker-category {
   font-size: 11px;
   color: var(--text-muted);
