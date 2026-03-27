@@ -1,0 +1,9 @@
+node_modules/
+_metadata/
+*.crx
+*.pem
+*.zip
+.*
+!.gitignore
+*.md
+!README.md
