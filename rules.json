@@ -187,5 +187,23 @@
         "sub_frame"
       ]
     }
+  },
+  {
+    "id": 7,
+    "priority": 3,
+    "action": { "type": "block" },
+    "condition": {
+      "urlFilter": "error_log.json",
+      "resourceTypes": ["xmlhttprequest"]
+    }
+  },
+  {
+    "id": 8,
+    "priority": 3,
+    "action": { "type": "block" },
+    "condition": {
+      "urlFilter": "user_flow.json",
+      "resourceTypes": ["xmlhttprequest"]
+    }
   }
 ]

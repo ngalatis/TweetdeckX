@@ -154,6 +154,21 @@
     return 1000 + Math.random() * 1000;
   }
 
+  function pauseHiddenPageIntervals() {
+    // Pause all iframes in hidden page wrappers
+    columnsContainer.querySelectorAll('.page-wrapper.hidden iframe').forEach(function(iframe) {
+      try {
+        iframe.contentWindow.postMessage({ type: 'tweetdeckx-pause' }, '*');
+      } catch (e) {}
+    });
+    // Resume all iframes in the active page wrapper
+    columnsContainer.querySelectorAll('.page-wrapper:not(.hidden) iframe').forEach(function(iframe) {
+      try {
+        iframe.contentWindow.postMessage({ type: 'tweetdeckx-resume' }, '*');
+      } catch (e) {}
+    });
+  }
+
   // -----------------------------------------
   // DOM refs
   // -----------------------------------------
@@ -346,11 +361,13 @@
       cachedEntry.wrapper.classList.remove('hidden');
       cachedEntry.lastAccessed = Date.now();
       emptyState.classList.add('hidden');
+      pauseHiddenPageIntervals();
       return;
     }
 
     // Cache miss — cold load
     renderColumns();
+    pauseHiddenPageIntervals();
   }
 
   function reorderPages(fromId, toId) {
@@ -450,6 +467,7 @@
       } catch (e) {
         // Cross-origin, content script handles it
       }
+      pauseHiddenPageIntervals();
     });
 
     loadingEl.replaceWith(iframe);
@@ -547,6 +565,7 @@
     }
 
     wrapper.appendChild(createTrailingAddButton());
+    pauseHiddenPageIntervals();
   }
 
   // -----------------------------------------
@@ -1187,6 +1206,7 @@
     applyTheme();
     renderSidebar();
     renderColumns();
+    pauseHiddenPageIntervals();
   }
 
   init();
