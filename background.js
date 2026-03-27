@@ -123,12 +123,12 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   }
 });
 
-// Log when rules are matched (for debugging)
-if (chrome.declarativeNetRequest.onRuleMatchedDebug) {
-  chrome.declarativeNetRequest.onRuleMatchedDebug.addListener((info) => {
-    console.log('Rule matched:', info.request.url, 'Rule ID:', info.rule.ruleId, 'Type:', info.request.type);
-  });
-}
+// Log when rules are matched (for debugging — uncomment when needed)
+// if (chrome.declarativeNetRequest.onRuleMatchedDebug) {
+//   chrome.declarativeNetRequest.onRuleMatchedDebug.addListener((info) => {
+//     console.log('Rule matched:', info.request.url, 'Rule ID:', info.rule.ruleId, 'Type:', info.request.type);
+//   });
+// }
 
 // -------------------------------------------------------
 // Rate limit (429) detection
