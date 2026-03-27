@@ -35,12 +35,16 @@
     if (e.data && e.data.type === 'tweetdeckx-init') {
       isTweetDeckX = true;
       applyCompactStyles();
+      applyHideAds(e.data.hideAds);
     }
     if (e.data && e.data.type === 'tweetdeckx-set-column-width') {
       document.documentElement.style.setProperty('--tweetdeckx-col-width', e.data.width + 'px');
     }
     if (e.data && e.data.type === 'tweetdeckx-back') {
       window.history.back();
+    }
+    if (e.data && e.data.type === 'tweetdeckx-set-hide-ads') {
+      applyHideAds(e.data.enabled);
     }
   });
 
@@ -187,6 +191,30 @@
     try {
       window.parent.postMessage({ type: 'tweetdeckx-compact-ready' }, '*');
     } catch (e) {}
+  }
+
+  function applyHideAds(enabled) {
+    const id = 'tweetdeckx-hide-ads';
+    const existing = document.getElementById(id);
+    if (enabled && !existing) {
+      const style = document.createElement('style');
+      style.id = id;
+      style.textContent = `
+        /* Hide promoted tweets */
+        [data-testid="cellInnerDiv"]:has([data-testid="placementTracking"]) {
+          display: none !important;
+        }
+
+        /* Hide premium upsell banners */
+        [data-testid="cellInnerDiv"]:has(a[href="/i/premium_sign_up"]),
+        [data-testid="cellInnerDiv"]:has(a[href="/settings/monetization"]) {
+          display: none !important;
+        }
+      `;
+      (document.head || document.documentElement).appendChild(style);
+    } else if (!enabled && existing) {
+      existing.remove();
+    }
   }
 
   // -------------------------------------------------------
