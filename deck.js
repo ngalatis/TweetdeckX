@@ -1042,7 +1042,31 @@
   function dismissRateLimitToast() {
     rateLimitToast.classList.add('hidden');
     clearTimeout(rateLimitToastTimer);
-    setTimeout(() => { isRateLimited = false; }, 20000);
+    setTimeout(() => {
+      isRateLimited = false;
+      resumePausedLoads();
+    }, 20000);
+  }
+
+  function resumePausedLoads() {
+    const page = getActivePage();
+    if (!page) return;
+    const unloaded = columnsScroll.querySelectorAll('.column-loading');
+    let delay = 0;
+    unloaded.forEach((loadingEl) => {
+      const colEl = loadingEl.closest('.deck-column');
+      if (!colEl) return;
+      const colData = page.columns.find(c => c.id === colEl.dataset.id);
+      if (!colData) return;
+      delay += randomStagger();
+      const timerId = setTimeout(() => {
+        if (!isRateLimited) {
+          loadIframeForColumn(colEl, colData);
+        }
+        pendingStaggerTimers = pendingStaggerTimers.filter(t => t !== timerId);
+      }, delay);
+      pendingStaggerTimers.push(timerId);
+    });
   }
 
   chrome.runtime.onMessage.addListener((msg) => {
