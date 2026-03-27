@@ -154,20 +154,56 @@
     return 1000 + Math.random() * 1000;
   }
 
-  function pauseHiddenPageIntervals() {
-    // Pause all iframes in hidden page wrappers
-    columnsContainer.querySelectorAll('.page-wrapper.hidden iframe').forEach(function(iframe) {
+  function updateActiveColumn() {
+    // Pause ALL iframes everywhere (hidden pages + non-visible columns)
+    columnsContainer.querySelectorAll('iframe').forEach(function(iframe) {
       try {
         iframe.contentWindow.postMessage({ type: 'tweetdeckx-pause' }, '*');
       } catch (e) {}
     });
-    // Resume all iframes in the active page wrapper
-    columnsContainer.querySelectorAll('.page-wrapper:not(.hidden) iframe').forEach(function(iframe) {
-      try {
-        iframe.contentWindow.postMessage({ type: 'tweetdeckx-resume' }, '*');
-      } catch (e) {}
+
+    // Resume ONLY the column currently visible in the active page
+    const activeWrapper = getActiveWrapper();
+    if (!activeWrapper) return;
+
+    const columns = activeWrapper.querySelectorAll('.deck-column');
+    if (columns.length === 0) return;
+
+    // Find the column closest to the viewport center
+    const containerRect = columnsContainer.getBoundingClientRect();
+    const viewportCenter = containerRect.left + containerRect.width / 2;
+    let closestCol = null;
+    let closestDist = Infinity;
+
+    columns.forEach(function(col) {
+      const rect = col.getBoundingClientRect();
+      const colCenter = rect.left + rect.width / 2;
+      const dist = Math.abs(colCenter - viewportCenter);
+      if (dist < closestDist) {
+        closestDist = dist;
+        closestCol = col;
+      }
     });
+
+    if (closestCol) {
+      const iframe = closestCol.querySelector('iframe');
+      if (iframe) {
+        try {
+          iframe.contentWindow.postMessage({ type: 'tweetdeckx-resume' }, '*');
+        } catch (e) {}
+      }
+    }
   }
+
+  // Debounced version for scroll events
+  let _updateActiveColumnTimer = null;
+  function updateActiveColumnDebounced() {
+    clearTimeout(_updateActiveColumnTimer);
+    _updateActiveColumnTimer = setTimeout(updateActiveColumn, 200);
+  }
+
+  // Update active column when user scrolls between columns
+  columnsContainer.addEventListener('scroll', updateActiveColumnDebounced);
 
   // -----------------------------------------
   // DOM refs
@@ -361,13 +397,13 @@
       cachedEntry.wrapper.classList.remove('hidden');
       cachedEntry.lastAccessed = Date.now();
       emptyState.classList.add('hidden');
-      pauseHiddenPageIntervals();
+      updateActiveColumn();
       return;
     }
 
     // Cache miss — cold load
     renderColumns();
-    pauseHiddenPageIntervals();
+    updateActiveColumn();
   }
 
   function reorderPages(fromId, toId) {
@@ -467,7 +503,7 @@
       } catch (e) {
         // Cross-origin, content script handles it
       }
-      pauseHiddenPageIntervals();
+      updateActiveColumn();
     });
 
     loadingEl.replaceWith(iframe);
@@ -565,7 +601,7 @@
     }
 
     wrapper.appendChild(createTrailingAddButton());
-    pauseHiddenPageIntervals();
+    updateActiveColumn();
   }
 
   // -----------------------------------------
@@ -1206,7 +1242,7 @@
     applyTheme();
     renderSidebar();
     renderColumns();
-    pauseHiddenPageIntervals();
+    updateActiveColumn();
   }
 
   init();
