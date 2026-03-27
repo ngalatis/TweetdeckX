@@ -155,43 +155,150 @@
     return 1000 + Math.random() * 1000;
   }
 
-  let activeColumnId = null; // track which column is polling
+  let activeColumnId = null;       // which column is currently Active (resumed)
+  let idleTimer = null;            // timer to pause the active column after inactivity
+  let refreshTimers = new Map();   // Map<columnId, timerId> for 5-min lazy refresh
 
-  function updateActiveColumn() {
-    // Pause ALL iframes everywhere
-    columnsContainer.querySelectorAll('iframe').forEach(function(iframe) {
+  const IDLE_TIMEOUT = 45000;      // 45 seconds of no mouse activity → pause
+  const REFRESH_INTERVAL = 300000; // 5 minutes between lazy refreshes
+  const RESUME_BURST_MS = 3000;    // how long a brief resume-then-pause lasts
+
+  function pauseAllIframes() {
+    columnsContainer.querySelectorAll('iframe').forEach(function (iframe) {
       try {
         iframe.contentWindow.postMessage({ type: 'tweetdeckx-pause' }, '*');
       } catch (e) {}
     });
+  }
 
-    // Resume only the active column (or first column if none set)
-    const activeWrapper = getActiveWrapper();
-    if (!activeWrapper) return;
-
-    let targetCol = null;
-    if (activeColumnId) {
-      targetCol = activeWrapper.querySelector(`.deck-column[data-id="${activeColumnId}"]`);
-    }
-    // Fall back to first column if active column not found (e.g. after page switch)
-    if (!targetCol) {
-      targetCol = activeWrapper.querySelector('.deck-column');
-      if (targetCol) activeColumnId = targetCol.dataset.id;
-    }
-
-    if (targetCol) {
-      const iframe = targetCol.querySelector('iframe');
-      if (iframe) {
-        try {
-          iframe.contentWindow.postMessage({ type: 'tweetdeckx-resume' }, '*');
-        } catch (e) {}
-      }
+  function pauseColumn(colId) {
+    const wrapper = getActiveWrapper();
+    if (!wrapper) return;
+    const col = wrapper.querySelector(`.deck-column[data-id="${colId}"]`);
+    if (!col) return;
+    const iframe = col.querySelector('iframe');
+    if (iframe) {
+      try { iframe.contentWindow.postMessage({ type: 'tweetdeckx-pause' }, '*'); } catch (e) {}
     }
   }
 
-  function setActiveColumn(colId) {
+  function resumeColumn(colId) {
+    const wrapper = getActiveWrapper();
+    if (!wrapper) return;
+    const col = wrapper.querySelector(`.deck-column[data-id="${colId}"]`);
+    if (!col) return;
+    const iframe = col.querySelector('iframe');
+    if (iframe) {
+      try { iframe.contentWindow.postMessage({ type: 'tweetdeckx-resume' }, '*'); } catch (e) {}
+    }
+  }
+
+  function activateColumn(colId) {
+    if (activeColumnId && activeColumnId !== colId) {
+      pauseColumn(activeColumnId);
+    }
     activeColumnId = colId;
-    updateActiveColumn();
+    resumeColumn(colId);
+    resetIdleTimer();
+    resetRefreshTimer(colId);
+  }
+
+  function deactivateActiveColumn() {
+    if (activeColumnId) {
+      pauseColumn(activeColumnId);
+      activeColumnId = null;
+    }
+    clearIdleTimer();
+  }
+
+  function resetIdleTimer() {
+    clearTimeout(idleTimer);
+    idleTimer = setTimeout(() => {
+      deactivateActiveColumn();
+    }, IDLE_TIMEOUT);
+  }
+
+  function clearIdleTimer() {
+    clearTimeout(idleTimer);
+    idleTimer = null;
+  }
+
+  function burstResumeColumn(colId) {
+    resumeColumn(colId);
+    setTimeout(() => {
+      if (activeColumnId !== colId) {
+        pauseColumn(colId);
+      }
+    }, RESUME_BURST_MS);
+  }
+
+  function startRefreshTimers() {
+    clearAllRefreshTimers();
+    const wrapper = getActiveWrapper();
+    if (!wrapper) return;
+    const page = getActivePage();
+    if (!page) return;
+
+    page.columns.forEach((col) => {
+      const colEl = wrapper.querySelector(`.deck-column[data-id="${col.id}"]`);
+      if (!colEl || !colEl.querySelector('iframe')) return;
+
+      const timerId = setInterval(() => {
+        if (col.id !== activeColumnId) {
+          burstResumeColumn(col.id);
+        }
+      }, REFRESH_INTERVAL);
+      refreshTimers.set(col.id, timerId);
+    });
+  }
+
+  function resetRefreshTimer(colId) {
+    const existing = refreshTimers.get(colId);
+    if (existing) {
+      clearInterval(existing);
+    }
+    const timerId = setInterval(() => {
+      if (colId !== activeColumnId) {
+        burstResumeColumn(colId);
+      }
+    }, REFRESH_INTERVAL);
+    refreshTimers.set(colId, timerId);
+  }
+
+  function clearAllRefreshTimers() {
+    refreshTimers.forEach((timerId) => clearInterval(timerId));
+    refreshTimers.clear();
+  }
+
+  function attachColumnInteractionListeners(colEl) {
+    const colId = colEl.dataset.id;
+
+    colEl.addEventListener('click', () => {
+      if (activeColumnId !== colId) {
+        activateColumn(colId);
+      }
+    });
+
+    colEl.addEventListener('mouseenter', () => {
+      if (activeColumnId === colId) {
+        resetIdleTimer();
+      }
+    });
+
+    colEl.addEventListener('mouseleave', () => {
+      if (activeColumnId === colId) {
+        resetIdleTimer();
+      }
+    });
+
+    // Scroll over column → activate it (natural interaction)
+    colEl.addEventListener('wheel', () => {
+      if (activeColumnId !== colId) {
+        activateColumn(colId);
+      } else {
+        resetIdleTimer();
+      }
+    }, { passive: true });
   }
 
   // -----------------------------------------
@@ -226,13 +333,7 @@
   const colWidthValue = document.getElementById('col-width-value');
   const themeSelect = document.getElementById('theme-select');
 
-  // Listen for clicks on columns to make them the active polling column
-  columnsContainer.addEventListener('click', function(e) {
-    const col = e.target.closest('.deck-column');
-    if (col && col.dataset.id && col.dataset.id !== activeColumnId) {
-      setActiveColumn(col.dataset.id);
-    }
-  });
+  // Column activation is now handled per-column by attachColumnInteractionListeners()
 
   // -----------------------------------------
   // Persistence (chrome.storage.local)
@@ -372,6 +473,10 @@
   function switchPage(pageId) {
     if (pageId === state.activePageId) return;
 
+    // Deactivate current column and clear timers before switching
+    deactivateActiveColumn();
+    clearAllRefreshTimers();
+
     // Hide current page wrapper
     const currentWrapper = getActiveWrapper();
     if (currentWrapper) {
@@ -390,17 +495,17 @@
     // Check if target page has a cached wrapper in the DOM
     const cachedEntry = pageCache.get(pageId);
     if (cachedEntry && cachedEntry.wrapper.parentNode === columnsContainer) {
-      // Cache hit — just show it
+      // Cache hit — show cached DOM, no refresh, no active column
       cachedEntry.wrapper.classList.remove('hidden');
       cachedEntry.lastAccessed = Date.now();
       emptyState.classList.add('hidden');
-      updateActiveColumn();
+      // Restart refresh timers for this page's columns
+      startRefreshTimers();
       return;
     }
 
-    // Cache miss — cold load
+    // Cache miss — cold load (renderColumns handles burst-resume)
     renderColumns();
-    updateActiveColumn();
   }
 
   function reorderPages(fromId, toId) {
@@ -476,6 +581,7 @@
         if (iframe) {
           iframe.src = iframe.src;
         }
+        activateColumn(col.id);
       } else if (action === 'move') {
         toggleMoveDropdown(colEl, col.id);
       }
@@ -484,6 +590,9 @@
     // Column drag-and-drop
     const header = colEl.querySelector('.column-header');
     setupColumnDragDrop(header, colEl, col.id);
+
+    // Rate limit: interaction-driven activation
+    attachColumnInteractionListeners(colEl);
 
     return colEl;
   }
@@ -508,7 +617,13 @@
       } catch (e) {
         // Cross-origin, content script handles it
       }
-      updateActiveColumn();
+      // Pause immediately, then give a brief burst for initial data fetch
+      const colEl = iframe.closest('.deck-column');
+      const colId = colEl ? colEl.dataset.id : null;
+      if (colId) {
+        pauseColumn(colId);
+        burstResumeColumn(colId);
+      }
     });
 
     loadingEl.replaceWith(iframe);
@@ -606,7 +721,10 @@
     }
 
     wrapper.appendChild(createTrailingAddButton());
-    updateActiveColumn();
+    // All columns start paused — initial data fetch is handled by
+    // burstResumeColumn in loadIframeForColumn's load handler
+    pauseAllIframes();
+    startRefreshTimers();
   }
 
   // -----------------------------------------
@@ -632,6 +750,7 @@
     // Append single column to live DOM without destroying existing iframes
     const colEl = createColumnElement(col);
     loadIframeForColumn(colEl, col);
+    resetRefreshTimer(col.id);
 
     const wrapper = getActiveWrapper();
     if (!wrapper) {
@@ -656,6 +775,16 @@
     if (!page) return;
     page.columns = page.columns.filter(c => c.id !== colId);
     saveState();
+
+    // Clean up timers for this column
+    if (activeColumnId === colId) {
+      deactivateActiveColumn();
+    }
+    const timer = refreshTimers.get(colId);
+    if (timer) {
+      clearInterval(timer);
+      refreshTimers.delete(colId);
+    }
 
     // Remove single column from live DOM without destroying other iframes
     const wrapper = getActiveWrapper();
@@ -807,6 +936,16 @@
 
     const [col] = sourcePage.columns.splice(colIdx, 1);
     targetPage.columns.push(col);
+
+    // Clean up timers for this column
+    if (activeColumnId === colId) {
+      deactivateActiveColumn();
+    }
+    const timer = refreshTimers.get(colId);
+    if (timer) {
+      clearInterval(timer);
+      refreshTimers.delete(colId);
+    }
 
     // Remove the column element from the active wrapper's DOM
     const wrapper = getActiveWrapper();
@@ -1136,6 +1275,7 @@
 
   document.getElementById('btn-reset-pages').addEventListener('click', () => {
     if (confirm('Reset all pages? This will remove all pages and columns and cannot be undone.')) {
+      deactivateActiveColumn();
       clearAllCache();
       const defaultPage = {
         id: generateId('page'),
@@ -1247,7 +1387,6 @@
     applyTheme();
     renderSidebar();
     renderColumns();
-    updateActiveColumn();
   }
 
   init();
