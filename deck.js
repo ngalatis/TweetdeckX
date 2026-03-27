@@ -91,7 +91,7 @@
   // -----------------------------------------
 
   const pageCache = new Map(); // Map<pageId, { wrapper: HTMLElement, lastAccessed: number }>
-  const PAGE_CACHE_MAX = 10;
+  const PAGE_CACHE_MAX = 1000; // effectively unlimited — lower this if RAM becomes an issue
 
   function getActiveWrapper() {
     return columnsContainer.querySelector('.page-wrapper:not(.hidden)') || null;

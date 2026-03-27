@@ -32,6 +32,21 @@ A free, open-source Chrome extension that brings back the TweetDeck-style multi-
 - X likes to rate limit the shit out of its normal users. Since we're using the simplest form of X timeline we can sometimes hit those rate limits. I'm trying to mitigate this as best as I can but you should be aware if you are a power user with a shit ton of columns.
 
 
+## Permissions
+
+TweetDeckX requests only the permissions it needs to function. Here's exactly what each one does and why:
+
+| Permission | Why we need it |
+|---|---|
+| `storage` | Save your pages, columns, and settings locally in your browser. Nothing is sent anywhere. |
+| `cookies` | Read your X.com session cookies so the embedded columns can authenticate. Without this, X.com would show "Please log in" in every column. Cookies are only read for `x.com` — never for any other site. |
+| `declarativeNetRequest` | Strip X.com's `X-Frame-Options` and `Content-Security-Policy` headers so X.com pages can load inside iframes. Also spoofs `Sec-Fetch-*` headers so X.com's servers don't block the embedded pages. |
+| `declarativeNetRequestFeedback` | Debug logging for the header rules above — helps diagnose issues when columns fail to load. |
+| `webRequest` | Detect when X.com returns 429 (rate limit) responses so we can pause loading and warn you instead of hammering their servers. Read-only — we never modify or block any requests. |
+| Host permissions (`x.com`, `twitter.com`, `twimg.com`, `api.x.com`) | Required for the above permissions to apply to X.com's domains. Without these, Chrome wouldn't let us read cookies, modify headers, or monitor responses for those sites. |
+
+**What we don't do:** No data collection, no analytics, no external servers, no tracking. Everything runs locally in your browser.
+
 ## Reporting Bugs
 
 Found a bug? Please [open an issue](../../issues) on GitHub with:
