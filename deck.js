@@ -48,10 +48,112 @@
   // -----------------------------------------
 
   const EMOJI_POOL = [
-    { category: 'General', emojis: ['🏠','⭐','📌','💡','🔥','❤️','🚀','🎯','✨','💎','🌟','⚡','🏆','👑','🔔','📎'] },
-    { category: 'Topics',  emojis: ['📈','💻','🎮','⚽','🎵','📰','🌍','📚','🔬','💰','🏦','📊','🛒','🎬','📸','🍔'] },
-    { category: 'People & Nature', emojis: ['😎','🐱','🌿','☀️','🌈','🌊','🐕','🌸','🍀','🦋','🌙','🎨'] },
-    { category: 'Symbols', emojis: ['💬','📧','🔗','⚙️','🔒','📁','🗂️','✅','❌','⏰','🏷️','📝'] },
+    { category: 'Smileys & Emotion', emojis: [
+      '😀','😃','😄','😁','😆','😅','🤣','😂','🙂','🙃','😉','😊','😇','🥰','😍','🤩',
+      '😘','😗','😚','😙','🥲','😋','😛','😜','🤪','😝','🤑','🤗','🤭','🤫','🤔','🫡',
+      '🤐','🤨','😐','😑','😶','🫥','😏','😒','🙄','😬','🤥','😌','😔','😪','🤤','😴',
+      '😷','🤒','🤕','🤢','🤮','🥵','🥶','🥴','😵','🤯','🤠','🥳','🥸','😎','🤓','🧐',
+      '😕','🫤','😟','🙁','😮','😯','😲','😳','🥺','🥹','😦','😧','😨','😰','😥','😢',
+      '😭','😱','😖','😣','😞','😓','😩','😫','🥱','😤','😡','😠','🤬','😈','👿','💀',
+      '☠️','💩','🤡','👹','👺','👻','👽','👾','🤖','😺','😸','😹','😻','😼','😽','🙀',
+      '😿','😾','🫶','❤️','🧡','💛','💚','💙','💜','🖤','🤍','🤎','💔','❣️','💕','💞',
+      '💓','💗','💖','💘','💝','💟',
+    ]},
+    { category: 'People & Gestures', emojis: [
+      '👋','🤚','🖐️','✋','🖖','🫱','🫲','🫳','🫴','👌','🤌','🤏','✌️','🤞','🫰','🤟',
+      '🤘','🤙','👈','👉','👆','🖕','👇','☝️','🫵','👍','👎','✊','👊','🤛','🤜','👏',
+      '🙌','🫶','👐','🤲','🤝','🙏','✍️','💅','🤳','💪','🦾','🦿','🦵','🦶','👂','🦻',
+      '👃','🧠','🫀','🫁','🦷','🦴','👀','👁️','👅','👄','👶','🧒','👦','👧','🧑','👱',
+      '👨','🧔','👩','🧓','👴','👵','🙍','🙎','🙅','🙆','💁','🙋','🧏','🙇','🤦','🤷',
+      '👮','🕵️','💂','🥷','👷','🫅','🤴','👸','👳','👲','🧕','🤵','👰','🤰','🫃','🫄',
+      '🤱','👼','🎅','🤶','🦸','🦹','🧙','🧚','🧛','🧜','🧝','🧞','🧟','💆','💇','🚶',
+      '🧍','🧎','🏃','💃','🕺','👯','🧖','🧗','🤸','⛹️','🏋️','🚴','🚵','🤼','🤽','🤾',
+      '🤺','🏇','⛷️','🏂','🏌️','🏄','🚣','🏊','🤽','🧘','👫','👬','👭','💏','💑','👪',
+    ]},
+    { category: 'Animals & Nature', emojis: [
+      '🐶','🐱','🐭','🐹','🐰','🦊','🐻','🐼','🐻‍❄️','🐨','🐯','🦁','🐮','🐷','🐸','🐵',
+      '🙈','🙉','🙊','🐒','🐔','🐧','🐦','🐤','🐣','🐥','🦆','🦅','🦉','🦇','🐺','🐗',
+      '🐴','🦄','🐝','🪱','🐛','🦋','🐌','🐞','🐜','🪰','🪲','🪳','🦟','🦗','🕷️','🦂',
+      '🐢','🐍','🦎','🦖','🦕','🐙','🦑','🦐','🦞','🦀','🐡','🐠','🐟','🐬','🐳','🐋',
+      '🦈','🐊','🐅','🐆','🦓','🦍','🦧','🐘','🦛','🦏','🐪','🐫','🦒','🦘','🦬','🐃',
+      '🐂','🐄','🐎','🐖','🐏','🐑','🦙','🐐','🦌','🐕','🐩','🦮','🐕‍🦺','🐈','🐈‍⬛','🪶',
+      '🐓','🦃','🦤','🦚','🦜','🦢','🦩','🕊️','🐇','🦝','🦨','🦡','🦫','🦦','🦥','🐁',
+      '🐀','🐿️','🦔','🐾','🐉','🐲','🌵','🎄','🌲','🌳','🌴','🪵','🌱','🌿','☘️','🍀',
+      '🎍','🪴','🎋','🍃','🍂','🍁','🪺','🪹','🍄','🌾','💐','🌷','🌹','🥀','🌺','🌸',
+      '🌼','🌻','🌞','🌝','🌛','🌜','🌚','🌕','🌖','🌗','🌘','🌑','🌒','🌓','🌔','🌙',
+      '🌎','🌍','🌏','🪐','💫','⭐','🌟','✨','⚡','☄️','💥','🔥','🌪️','🌈','☀️','🌤️',
+      '⛅','🌥️','☁️','🌦️','🌧️','⛈️','🌩️','🌨️','❄️','☃️','⛄','🌬️','💨','💧','💦','🫧',
+      '☔','☂️','🌊','🌫️',
+    ]},
+    { category: 'Food & Drink', emojis: [
+      '🍇','🍈','🍉','🍊','🍋','🍌','🍍','🥭','🍎','🍏','🍐','🍑','🍒','🍓','🫐','🥝',
+      '🍅','🫒','🥥','🥑','🍆','🥔','🥕','🌽','🌶️','🫑','🥒','🥬','🥦','🧄','🧅','🍄',
+      '🥜','🫘','🌰','🍞','🥐','🥖','🫓','🥨','🥯','🥞','🧇','🧀','🍖','🍗','🥩','🥓',
+      '🍔','🍟','🍕','🌭','🥪','🌮','🌯','🫔','🥙','🧆','🥚','🍳','🥘','🍲','🫕','🥣',
+      '🥗','🍿','🧈','🧂','🥫','🍱','🍘','🍙','🍚','🍛','🍜','🍝','🍠','🍢','🍣','🍤',
+      '🍥','🥮','🍡','🥟','🥠','🥡','🦀','🦞','🦐','🦑','🦪','🍦','🍧','🍨','🍩','🍪',
+      '🎂','🍰','🧁','🥧','🍫','🍬','🍭','🍮','🍯','🍼','🥛','☕','🫖','🍵','🍶','🍾',
+      '🍷','🍸','🍹','🍺','🍻','🥂','🥃','🫗','🥤','🧋','🧃','🧉','🧊',
+    ]},
+    { category: 'Activities & Sports', emojis: [
+      '⚽','🏀','🏈','⚾','🥎','🎾','🏐','🏉','🥏','🎱','🪀','🏓','🏸','🏒','🏑','🥍',
+      '🏏','🪃','🥅','⛳','🪁','🏹','🎣','🤿','🥊','🥋','🎽','🛹','🛼','🛷','⛸️','🥌',
+      '🎿','⛷️','🏂','🪂','🏋️','🤼','🤸','⛹️','🤺','🤾','🏌️','🏇','🧘','🏄','🏊','🤽',
+      '🚣','🧗','🚵','🚴','🏆','🥇','🥈','🥉','🏅','🎖️','🏵️','🎗️','🎫','🎟️','🎪','🤹',
+      '🎭','🩰','🎨','🎬','🎤','🎧','🎼','🎹','🥁','🪘','🎷','🎺','🪗','🎸','🪕','🎻',
+      '🎲','♟️','🎯','🎳','🎮','🕹️','🧩',
+    ]},
+    { category: 'Travel & Places', emojis: [
+      '🚗','🚕','🚙','🚌','🚎','🏎️','🚓','🚑','🚒','🚐','🛻','🚚','🚛','🚜','🏍️','🛵',
+      '🦽','🦼','🛺','🚲','🛴','🛹','🛼','🚏','🛣️','🛤️','🛞','⛽','🛞','🚨','🚥','🚦',
+      '🛑','🚧','⚓','🛟','⛵','🛶','🚤','🛳️','⛴️','🛥️','🚢','✈️','🛩️','🛫','🛬','🪂',
+      '💺','🚁','🚟','🚠','🚡','🛰️','🚀','🛸','🛎️','🧳','⏰','⌚','⏱️','⏲️','🕰️','🌡️',
+      '🗺️','🧭','🏔️','⛰️','🌋','🗻','🏕️','🏖️','🏜️','🏝️','🏞️','🏟️','🏛️','🏗️','🧱','🪨',
+      '🪵','🛖','🏘️','🏚️','🏠','🏡','🏢','🏣','🏤','🏥','🏦','🏨','🏩','🏪','🏫','🏬',
+      '🏭','🏯','🏰','💒','🗼','🗽','⛪','🕌','🛕','🕍','⛩️','🕋','⛲','⛺','🌁','🌃',
+      '🏙️','🌄','🌅','🌆','🌇','🌉','♨️','🎠','🛝','🎡','🎢','💈','🎪','🗾','🎑','🏞️',
+    ]},
+    { category: 'Objects', emojis: [
+      '⌚','📱','📲','💻','⌨️','🖥️','🖨️','🖱️','🖲️','🕹️','🗜️','💾','💿','📀','📼','📷',
+      '📸','📹','🎥','📽️','🎞️','📞','☎️','📠','📺','📻','🎙️','🎚️','🎛️','🧭','⏱️','⏲️',
+      '⏰','🕰️','⌛','⏳','📡','🔋','🪫','🔌','💡','🔦','🕯️','🪔','🧯','🛢️','💸','💵',
+      '💴','💶','💷','🪙','💰','💳','💎','⚖️','🪜','🧰','🪛','🔧','🔨','⚒️','🛠️','⛏️',
+      '🪚','🔩','⚙️','🪤','🧱','⛓️','🧲','🔫','💣','🧨','🪓','🔪','🗡️','⚔️','🛡️','🚬',
+      '⚰️','🪦','⚱️','🏺','🔮','📿','🧿','🪬','💈','⚗️','🔭','🔬','🕳️','🩹','🩺','🩻',
+      '🩼','💊','💉','🩸','🧬','🦠','🧫','🧪','🌡️','🧹','🪠','🧺','🧻','🚽','🚰','🚿',
+      '🛁','🛀','🧼','🪥','🪒','🧽','🪣','🧴','🛎️','🔑','🗝️','🚪','🪑','🛋️','🛏️','🛌',
+      '🧸','🪆','🖼️','🪞','🪟','🛍️','🛒','🎁','🎈','🎏','🎀','🪄','🪅','🎊','🎉','🎎',
+      '🏮','🎐','🧧','✉️','📩','📨','📧','💌','📥','📤','📦','🏷️','🪧','📪','📫','📬',
+      '📭','📮','📯','📜','📃','📄','📑','🧾','📊','📈','📉','🗒️','🗓️','📆','📅','🗑️',
+      '📇','🗃️','🗳️','🗄️','📋','📁','📂','🗂️','🗞️','📰','📓','📔','📒','📕','📗','📘',
+      '📙','📚','📖','🔖','🧷','🔗','📎','🖇️','📐','📏','🧮','📌','📍','✂️','🖊️','🖋️',
+      '✒️','🖌️','🖍️','📝','✏️','🔍','🔎','🔏','🔐','🔒','🔓',
+    ]},
+    { category: 'Symbols', emojis: [
+      '💬','👁️‍🗨️','🗨️','🗯️','💭','♠️','♣️','♥️','♦️','🃏','🎴','🀄','🔇','🔈','🔉','🔊',
+      '📢','📣','📯','🔔','🔕','🎵','🎶','💹','🏧','🚮','🚰','♿','🚹','🚺','🚻','🚼',
+      '🚾','🛂','🛃','🛄','🛅','⚠️','🚸','⛔','🚫','🚳','🚭','🚯','🚱','🚷','📵','🔞',
+      '☢️','☣️','⬆️','↗️','➡️','↘️','⬇️','↙️','⬅️','↖️','↕️','↔️','↩️','↪️','⤴️','⤵️',
+      '🔃','🔄','🔙','🔚','🔛','🔜','🔝','🛐','⚛️','🕉️','✡️','☸️','☯️','✝️','☦️','☪️',
+      '☮️','🕎','🔯','♈','♉','♊','♋','♌','♍','♎','♏','♐','♑','♒','♓','⛎',
+      '🔀','🔁','🔂','▶️','⏩','⏭️','⏯️','◀️','⏪','⏮️','🔼','⏫','🔽','⏬','⏸️','⏹️',
+      '⏺️','⏏️','🎦','🔅','🔆','📶','📳','📴','♀️','♂️','⚧️','✖️','➕','➖','➗','🟰',
+      '♾️','‼️','⁉️','❓','❔','❕','❗','〰️','💱','💲','⚕️','♻️','⚜️','🔱','📛','🔰',
+      '⭕','✅','☑️','✔️','❌','❎','➰','➿','〽️','✳️','✴️','❇️','©️','®️','™️','#️⃣',
+      '*️⃣','0️⃣','1️⃣','2️⃣','3️⃣','4️⃣','5️⃣','6️⃣','7️⃣','8️⃣','9️⃣','🔟','🔠','🔡','🔢','🔣',
+      '🔤','🅰️','🆎','🅱️','🆑','🆒','🆓','ℹ️','🆔','Ⓜ️','🆕','🆖','🅾️','🆗','🅿️','🆘',
+      '🆙','🆚','🈁','🈂️','🈷️','🈶','🈯','🉐','🈹','🈚','🈲','🉑','🈸','🈴','🈳','㊗️',
+      '㊙️','🈺','🈵','🔴','🟠','🟡','🟢','🔵','🟣','🟤','⚫','⚪','🟥','🟧','🟨','🟩',
+      '🟦','🟪','🟫','⬛','⬜','◼️','◻️','◾','◽','▪️','▫️','🔶','🔷','🔸','🔹','🔺',
+      '🔻','💠','🔘','🔳','🔲',
+    ]},
+    { category: 'Flags', emojis: [
+      '🏁','🚩','🎌','🏴','🏳️','🏳️‍🌈','🏳️‍⚧️','🏴‍☠️','🇺🇸','🇬🇧','🇨🇦','🇦🇺','🇩🇪','🇫🇷','🇯🇵','🇰🇷',
+      '🇨🇳','🇮🇳','🇧🇷','🇲🇽','🇪🇸','🇮🇹','🇷🇺','🇳🇱','🇸🇪','🇳🇴','🇩🇰','🇫🇮','🇨🇭','🇦🇹','🇧🇪','🇵🇹',
+      '🇬🇷','🇹🇷','🇵🇱','🇮🇪','🇿🇦','🇪🇬','🇳🇬','🇰🇪','🇦🇷','🇨🇴','🇨🇱','🇵🇪','🇻🇪','🇪🇨','🇺🇾','🇵🇾',
+      '🇹🇭','🇻🇳','🇮🇩','🇵🇭','🇲🇾','🇸🇬','🇹🇼','🇭🇰','🇮🇱','🇸🇦','🇦🇪','🇶🇦','🇰🇼','🇵🇰','🇧🇩','🇱🇰',
+      '🇳🇿','🇺🇦','🇷🇴','🇭🇺','🇨🇿','🇸🇰','🇭🇷','🇷🇸','🇧🇬','🇱🇹','🇱🇻','🇪🇪',
+    ]},
   ];
   const ALL_EMOJIS = EMOJI_POOL.flatMap(c => c.emojis);
 
@@ -84,7 +186,7 @@
   let state = {
     pages: [],
     activePageId: null,
-    settings: { columnWidth: 420, theme: 'dark' },
+    settings: { columnWidth: 420, theme: 'dark', hideAds: false },
   };
 
   // -----------------------------------------
@@ -332,6 +434,7 @@
   const colWidthSlider = document.getElementById('col-width-slider');
   const colWidthValue = document.getElementById('col-width-value');
   const themeSelect = document.getElementById('theme-select');
+  const hideAdsToggle = document.getElementById('hide-ads-toggle');
 
   // Column activation is now handled per-column by attachColumnInteractionListeners()
 
@@ -609,7 +712,7 @@
 
     iframe.addEventListener('load', () => {
       try {
-        iframe.contentWindow.postMessage({ type: 'tweetdeckx-init' }, '*');
+        iframe.contentWindow.postMessage({ type: 'tweetdeckx-init', hideAds: state.settings.hideAds }, '*');
         iframe.contentWindow.postMessage({
           type: 'tweetdeckx-set-column-width',
           width: state.settings.columnWidth
@@ -628,6 +731,17 @@
 
     loadingEl.replaceWith(iframe);
     delete colEl.dataset.needsLoad;
+  }
+
+  function broadcastHideAds() {
+    document.querySelectorAll('.column-frame').forEach(iframe => {
+      try {
+        iframe.contentWindow.postMessage({
+          type: 'tweetdeckx-set-hide-ads',
+          enabled: state.settings.hideAds,
+        }, '*');
+      } catch (e) {}
+    });
   }
 
   function createTrailingAddButton() {
@@ -1017,32 +1131,52 @@
   function buildEmojiPicker() {
     emojiPicker.innerHTML = '';
 
-    EMOJI_POOL.forEach((cat) => {
-      const label = document.createElement('div');
-      label.className = 'emoji-picker-category';
-      label.textContent = cat.category;
-      emojiPicker.appendChild(label);
+    const searchInput = document.createElement('input');
+    searchInput.className = 'emoji-picker-search';
+    searchInput.type = 'text';
+    searchInput.placeholder = 'Search emojis...';
+    emojiPicker.appendChild(searchInput);
 
-      const grid = document.createElement('div');
-      grid.className = 'emoji-picker-grid';
+    const contentWrapper = document.createElement('div');
+    emojiPicker.appendChild(contentWrapper);
 
-      cat.emojis.forEach((emoji) => {
-        const btn = document.createElement('button');
-        btn.className = 'emoji-pick' + (emoji === selectedEmoji ? ' selected' : '');
-        btn.textContent = emoji;
-        btn.addEventListener('click', () => {
-          selectedEmoji = emoji;
-          pageEmojiBtn.textContent = emoji;
-          emojiPicker.querySelectorAll('.emoji-pick').forEach(b => b.classList.remove('selected'));
-          btn.classList.add('selected');
-          emojiPicker.classList.add('hidden');
-          pageEmojiBtn.classList.remove('active');
+    function renderEmojis(filter) {
+      contentWrapper.innerHTML = '';
+      const q = (filter || '').toLowerCase();
+
+      EMOJI_POOL.forEach((cat) => {
+        const filtered = q ? cat.emojis.filter(() => cat.category.toLowerCase().includes(q)) : cat.emojis;
+        if (filtered.length === 0) return;
+
+        const label = document.createElement('div');
+        label.className = 'emoji-picker-category';
+        label.textContent = cat.category;
+        contentWrapper.appendChild(label);
+
+        const grid = document.createElement('div');
+        grid.className = 'emoji-picker-grid';
+
+        filtered.forEach((emoji) => {
+          const btn = document.createElement('button');
+          btn.className = 'emoji-pick' + (emoji === selectedEmoji ? ' selected' : '');
+          btn.textContent = emoji;
+          btn.addEventListener('click', () => {
+            selectedEmoji = emoji;
+            pageEmojiBtn.textContent = emoji;
+            emojiPicker.querySelectorAll('.emoji-pick').forEach(b => b.classList.remove('selected'));
+            btn.classList.add('selected');
+            emojiPicker.classList.add('hidden');
+            pageEmojiBtn.classList.remove('active');
+          });
+          grid.appendChild(btn);
         });
-        grid.appendChild(btn);
-      });
 
-      emojiPicker.appendChild(grid);
-    });
+        contentWrapper.appendChild(grid);
+      });
+    }
+
+    searchInput.addEventListener('input', () => renderEmojis(searchInput.value));
+    renderEmojis('');
   }
 
   // Emoji button toggle
@@ -1052,8 +1186,17 @@
       emojiPicker.classList.add('hidden');
       pageEmojiBtn.classList.remove('active');
     } else {
+      const rect = pageEmojiBtn.getBoundingClientRect();
+      emojiPicker.style.top = (rect.bottom + 6) + 'px';
+      emojiPicker.style.left = rect.left + 'px';
       emojiPicker.classList.remove('hidden');
       pageEmojiBtn.classList.add('active');
+      const searchInput = emojiPicker.querySelector('.emoji-picker-search');
+      if (searchInput) {
+        searchInput.value = '';
+        searchInput.dispatchEvent(new Event('input'));
+        setTimeout(() => searchInput.focus(), 0);
+      }
     }
   });
 
@@ -1244,6 +1387,7 @@
     colWidthSlider.value = state.settings.columnWidth;
     colWidthValue.textContent = state.settings.columnWidth + 'px';
     themeSelect.value = state.settings.theme;
+    hideAdsToggle.checked = state.settings.hideAds;
     settingsOverlay.classList.remove('hidden');
   });
 
@@ -1271,6 +1415,12 @@
     state.settings.theme = themeSelect.value;
     applyTheme();
     saveState();
+  });
+
+  hideAdsToggle.addEventListener('change', () => {
+    state.settings.hideAds = hideAdsToggle.checked;
+    saveState();
+    broadcastHideAds();
   });
 
   document.getElementById('btn-reset-pages').addEventListener('click', () => {
