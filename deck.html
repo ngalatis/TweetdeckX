@@ -18,10 +18,12 @@
           <rect x="14" y="14" width="9" height="9" rx="1.5" fill="currentColor" opacity="0.3"/>
         </svg>
       </div>
-      <nav id="column-nav"></nav>
+      <nav id="page-nav">
+        <!-- Page tabs injected by deck.js -->
+      </nav>
     </div>
     <div class="sidebar-bottom">
-      <button id="btn-add-column" class="sidebar-btn" title="Add column">
+      <button id="btn-add-page" class="sidebar-btn" title="Add page">
         <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
           <line x1="10" y1="4" x2="10" y2="16" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
           <line x1="4" y1="10" x2="16" y2="10" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
@@ -135,6 +137,33 @@
     </div>
   </div>
 
+  <!-- Page Modal -->
+  <div id="page-modal-overlay" class="modal-overlay hidden">
+    <div class="modal modal-sm">
+      <div class="modal-header">
+        <h2 id="page-modal-title">New Page</h2>
+        <button class="modal-close" id="page-modal-close">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="page-modal-form">
+          <div class="page-modal-icon-col">
+            <label class="field-label">Icon</label>
+            <button id="page-emoji-btn" class="emoji-btn" title="Click to change"></button>
+            <div id="emoji-picker" class="emoji-picker hidden"></div>
+          </div>
+          <div class="page-modal-name-col">
+            <label class="field-label" for="page-name-input">Name</label>
+            <input type="text" id="page-name-input" placeholder="Page name" autocomplete="off" spellcheck="false">
+          </div>
+        </div>
+        <div id="page-modal-actions" class="page-modal-actions">
+          <button id="btn-page-save" class="btn-primary btn-full">Create Page</button>
+          <button id="btn-page-delete" class="btn-danger-pill hidden">Delete</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- Settings Modal -->
   <div id="settings-overlay" class="modal-overlay hidden">
     <div class="modal modal-sm">
@@ -161,9 +190,9 @@
           </div>
         </div>
         <div class="setting-row">
-          <label>Columns</label>
+          <label>Pages</label>
           <div class="setting-control">
-            <button id="btn-reset-columns" class="btn-danger-sm">Reset all columns</button>
+            <button id="btn-reset-pages" class="btn-danger-sm">Reset all pages</button>
           </div>
         </div>
       </div>
@@ -173,14 +202,12 @@
   <!-- Empty State -->
   <div id="empty-state" class="hidden">
     <div class="empty-content">
-      <svg width="64" height="64" viewBox="0 0 24 24" fill="none">
-        <rect x="1" y="1" width="9" height="9" rx="1.5" stroke="currentColor" stroke-width="1.5" opacity="0.7"/>
-        <rect x="14" y="1" width="9" height="9" rx="1.5" stroke="currentColor" stroke-width="1.5" opacity="0.5"/>
-        <rect x="1" y="14" width="9" height="9" rx="1.5" stroke="currentColor" stroke-width="1.5" opacity="0.5"/>
-        <rect x="14" y="14" width="9" height="9" rx="1.5" stroke="currentColor" stroke-width="1.5" opacity="0.3"/>
-      </svg>
-      <h2>Welcome to TweetDeckX</h2>
-      <p>Your multi-column X client. Click the <strong>+</strong> button in the sidebar to add your first column.</p>
+      <div id="empty-state-emoji" class="empty-emoji"></div>
+      <h2 id="empty-state-title"></h2>
+      <p id="empty-state-desc"></p>
+      <button id="btn-add-column-empty" class="btn-add-column-big">
+        <span>+</span> Add Column
+      </button>
     </div>
   </div>
 

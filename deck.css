@@ -121,7 +121,7 @@ html, body {
   cursor: default;
 }
 
-#column-nav {
+#page-nav {
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -132,7 +132,7 @@ html, body {
   max-height: calc(100vh - 180px);
   scrollbar-width: none;
 }
-#column-nav::-webkit-scrollbar { display: none; }
+#page-nav::-webkit-scrollbar { display: none; }
 
 .nav-item {
   width: 40px;
@@ -148,6 +148,7 @@ html, body {
   border: none;
   background: none;
   position: relative;
+  font-size: 18px;
 }
 
 .nav-item:hover {
@@ -620,11 +621,6 @@ html, body {
   color: var(--text-muted);
 }
 
-.empty-content svg {
-  margin-bottom: 16px;
-  opacity: 0.4;
-}
-
 .empty-content h2 {
   font-size: 22px;
   font-weight: 700;
@@ -635,10 +631,237 @@ html, body {
 .empty-content p {
   font-size: 14px;
   line-height: 1.6;
-  max-width: 300px;
+  max-width: 320px;
   color: var(--text-secondary);
 }
 
 .empty-content strong {
   color: var(--accent);
+}
+
+/* =========================================
+   Page Modal
+   ========================================= */
+
+.page-modal-form {
+  display: flex;
+  gap: 12px;
+  align-items: flex-end;
+}
+.page-modal-icon-col { position: relative; }
+.page-modal-name-col { flex: 1; }
+.field-label {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin-bottom: 8px;
+}
+.emoji-btn {
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  font-size: 20px;
+  cursor: pointer;
+  transition: border-color 0.15s;
+}
+.emoji-btn:hover, .emoji-btn.active { border-color: var(--accent); }
+#page-name-input {
+  width: 100%;
+  height: 40px;
+  padding: 0 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  font-size: 14px;
+  outline: none;
+  transition: border-color 0.15s;
+  font-family: inherit;
+}
+#page-name-input:focus { border-color: var(--accent); }
+.page-modal-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 16px;
+}
+.btn-full { flex: 1; }
+.btn-danger-pill {
+  height: 40px;
+  padding: 0 16px;
+  border: 1px solid var(--danger);
+  border-radius: 20px;
+  background: transparent;
+  color: var(--danger);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s;
+  font-family: inherit;
+}
+.btn-danger-pill:hover { background: rgba(244, 33, 46, 0.1); }
+.page-modal-actions .btn-primary { border-radius: 20px; }
+
+/* =========================================
+   Emoji Picker Dropdown
+   ========================================= */
+
+.emoji-picker {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  margin-top: 6px;
+  width: 260px;
+  max-height: 280px;
+  overflow-y: auto;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  padding: 10px;
+  z-index: 300;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+  scrollbar-width: thin;
+  scrollbar-color: var(--text-muted) transparent;
+}
+.emoji-picker.hidden { display: none; }
+.emoji-picker-category {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-bottom: 6px;
+  margin-top: 8px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.emoji-picker-category:first-child { margin-top: 0; }
+.emoji-picker-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  margin-bottom: 4px;
+}
+.emoji-pick {
+  width: 30px;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  font-size: 17px;
+  cursor: pointer;
+  border: 2px solid transparent;
+  background: none;
+  transition: background 0.1s;
+  padding: 0;
+}
+.emoji-pick:hover { background: var(--bg-surface-hover); }
+.emoji-pick.selected {
+  border-color: var(--accent);
+  background: var(--accent-muted);
+}
+
+/* =========================================
+   Move Column Dropdown
+   ========================================= */
+
+.move-dropdown {
+  position: absolute;
+  top: var(--header-height);
+  right: 8px;
+  width: 180px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  padding: 4px;
+  z-index: 150;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+}
+.move-dropdown-header {
+  padding: 6px 10px;
+  font-size: 11px;
+  color: var(--text-muted);
+  font-weight: 600;
+}
+.move-dropdown-item {
+  padding: 8px 10px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  color: var(--text-secondary);
+  font-size: 13px;
+  border: none;
+  background: none;
+  width: 100%;
+  text-align: left;
+  font-family: inherit;
+}
+.move-dropdown-item:hover {
+  background: var(--bg-surface-hover);
+  color: var(--text-primary);
+}
+.move-dropdown-item .move-emoji { font-size: 16px; }
+
+/* =========================================
+   Add Column Buttons
+   ========================================= */
+
+.add-column-trailing {
+  flex: 0 0 80px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+}
+.add-column-circle {
+  width: 48px;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  border: 2px dashed var(--border-color);
+  color: var(--text-muted);
+  font-size: 24px;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s;
+  background: none;
+}
+.add-column-circle:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.btn-add-column-big {
+  margin-top: 16px;
+  height: 44px;
+  padding: 0 28px;
+  border: none;
+  border-radius: 22px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s;
+  font-family: inherit;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.btn-add-column-big:hover { background: var(--accent-hover); }
+.btn-add-column-big span { font-size: 20px; }
+
+/* =========================================
+   Updated Empty State
+   ========================================= */
+
+.empty-emoji {
+  font-size: 48px;
+  opacity: 0.3;
+  margin-bottom: 16px;
 }
