@@ -22,7 +22,10 @@
     url:           { label: 'Custom URL',    url: null,                             icon: 'link',    needsInput: true,  inputLabel: 'X.com URL',        placeholder: 'https://x.com/...' },
   };
 
-  // Icon SVG snippets (small, 16x16)
+  // -----------------------------------------
+  // Icon SVG snippets
+  // -----------------------------------------
+
   const ICONS = {
     home:     '<svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M3 12l9-9 9 9" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M5 10v9a1 1 0 001 1h3v-5h6v5h3a1 1 0 001-1v-9" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>',
     explore:  '<svg width="16" height="16" viewBox="0 0 24 24" fill="none"><polygon points="3,11 22,2 13,21 11,13" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>',
@@ -36,30 +39,80 @@
     link:     '<svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>',
     refresh:  '<svg width="14" height="14" viewBox="0 0 24 24" fill="none"><polyline points="23 4 23 10 17 10" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>',
     close:    '<svg width="14" height="14" viewBox="0 0 24 24" fill="none"><line x1="18" y1="6" x2="6" y2="18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><line x1="6" y1="6" x2="18" y2="18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>',
+    move:     '<svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M5 12h14M12 5l7 7-7 7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>',
   };
+
+  // -----------------------------------------
+  // Emoji pool
+  // -----------------------------------------
+
+  const EMOJI_POOL = [
+    { category: 'General', emojis: ['🏠','⭐','📌','💡','🔥','❤️','🚀','🎯','✨','💎','🌟','⚡','🏆','👑','🔔','📎'] },
+    { category: 'Topics',  emojis: ['📈','💻','🎮','⚽','🎵','📰','🌍','📚','🔬','💰','🏦','📊','🛒','🎬','📸','🍔'] },
+    { category: 'People & Nature', emojis: ['😎','🐱','🌿','☀️','🌈','🌊','🐕','🌸','🍀','🦋','🌙','🎨'] },
+    { category: 'Symbols', emojis: ['💬','📧','🔗','⚙️','🔒','📁','🗂️','✅','❌','⏰','🏷️','📝'] },
+  ];
+  const ALL_EMOJIS = EMOJI_POOL.flatMap(c => c.emojis);
+
+  // -----------------------------------------
+  // Utility functions
+  // -----------------------------------------
+
+  function randomEmoji() {
+    return ALL_EMOJIS[Math.floor(Math.random() * ALL_EMOJIS.length)];
+  }
+
+  function generateId(prefix) {
+    return prefix + '_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6);
+  }
+
+  function escapeHtml(str) {
+    const div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+  }
+
+  function applyTheme() {
+    document.documentElement.setAttribute('data-theme', state.settings.theme);
+  }
 
   // -----------------------------------------
   // State
   // -----------------------------------------
 
-  let columns = [];    // Array of { id, type, param, title }
-  let settings = {
-    columnWidth: 420,
-    theme: 'dark',
+  let state = {
+    pages: [],
+    activePageId: null,
+    settings: { columnWidth: 420, theme: 'dark' },
   };
 
+  // -----------------------------------------
   // DOM refs
+  // -----------------------------------------
+
+  const pageNav = document.getElementById('page-nav');
   const columnsScroll = document.getElementById('columns-scroll');
-  const columnNav = document.getElementById('column-nav');
+  const columnsContainer = document.getElementById('columns-container');
   const emptyState = document.getElementById('empty-state');
+  const emptyStateEmoji = document.getElementById('empty-state-emoji');
+  const emptyStateTitle = document.getElementById('empty-state-title');
+  const emptyStateDesc = document.getElementById('empty-state-desc');
 
   const modalOverlay = document.getElementById('modal-overlay');
-  const settingsOverlay = document.getElementById('settings-overlay');
   const typeInputArea = document.getElementById('type-input-area');
   const typeInputLabel = document.getElementById('type-input-label');
   const typeInput = document.getElementById('type-input');
   const btnConfirmAdd = document.getElementById('btn-confirm-add');
 
+  const pageModalOverlay = document.getElementById('page-modal-overlay');
+  const pageModalTitle = document.getElementById('page-modal-title');
+  const pageEmojiBtn = document.getElementById('page-emoji-btn');
+  const emojiPicker = document.getElementById('emoji-picker');
+  const pageNameInput = document.getElementById('page-name-input');
+  const btnPageSave = document.getElementById('btn-page-save');
+  const btnPageDelete = document.getElementById('btn-page-delete');
+
+  const settingsOverlay = document.getElementById('settings-overlay');
   const colWidthSlider = document.getElementById('col-width-slider');
   const colWidthValue = document.getElementById('col-width-value');
   const themeSelect = document.getElementById('theme-select');
@@ -70,12 +123,14 @@
 
   async function loadState() {
     return new Promise((resolve) => {
-      chrome.storage.local.get(['tweetdeckx_columns', 'tweetdeckx_settings'], (data) => {
-        if (data.tweetdeckx_columns) {
-          columns = data.tweetdeckx_columns;
-        }
-        if (data.tweetdeckx_settings) {
-          settings = { ...settings, ...data.tweetdeckx_settings };
+      chrome.storage.local.get(['tweetdeckx_state'], (data) => {
+        if (data.tweetdeckx_state) {
+          const saved = data.tweetdeckx_state;
+          state.pages = saved.pages || [];
+          state.activePageId = saved.activePageId || null;
+          if (saved.settings) {
+            state.settings = { ...state.settings, ...saved.settings };
+          }
         }
         resolve();
       });
@@ -83,15 +138,16 @@
   }
 
   function saveState() {
-    chrome.storage.local.set({
-      tweetdeckx_columns: columns,
-      tweetdeckx_settings: settings,
-    });
+    chrome.storage.local.set({ tweetdeckx_state: state });
   }
 
   // -----------------------------------------
-  // URL generation for column types
+  // Helpers
   // -----------------------------------------
+
+  function getActivePage() {
+    return state.pages.find(p => p.id === state.activePageId) || state.pages[0] || null;
+  }
 
   function getColumnUrl(type, param) {
     const def = COLUMN_TYPES[type];
@@ -103,7 +159,6 @@
       case 'user':
         return `https://x.com/${param.replace(/^@/, '')}`;
       case 'list': {
-        // Accept full URL or just numeric ID
         if (param.startsWith('http')) return param;
         return `https://x.com/i/lists/${param}`;
       }
@@ -130,31 +185,132 @@
   }
 
   // -----------------------------------------
+  // Sidebar rendering
+  // -----------------------------------------
+
+  let draggedPageId = null;
+
+  function renderSidebar() {
+    pageNav.innerHTML = '';
+
+    state.pages.forEach((page) => {
+      const btn = document.createElement('button');
+      btn.className = 'nav-item' + (page.id === state.activePageId ? ' active' : '');
+      btn.textContent = page.emoji;
+      btn.title = page.name;
+      btn.draggable = true;
+      btn.dataset.pageId = page.id;
+
+      btn.addEventListener('click', () => {
+        switchPage(page.id);
+      });
+
+      btn.addEventListener('contextmenu', (e) => {
+        e.preventDefault();
+        openPageModal('edit', page);
+      });
+
+      // Page drag-and-drop
+      btn.addEventListener('dragstart', (e) => {
+        draggedPageId = page.id;
+        btn.classList.add('dragging');
+        e.dataTransfer.effectAllowed = 'move';
+        e.dataTransfer.setData('text/plain', page.id);
+      });
+
+      btn.addEventListener('dragend', () => {
+        draggedPageId = null;
+        btn.classList.remove('dragging');
+        document.querySelectorAll('#page-nav .drag-over').forEach(el => el.classList.remove('drag-over'));
+      });
+
+      btn.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'move';
+        if (draggedPageId && draggedPageId !== page.id) {
+          btn.classList.add('drag-over');
+        }
+      });
+
+      btn.addEventListener('dragleave', () => {
+        btn.classList.remove('drag-over');
+      });
+
+      btn.addEventListener('drop', (e) => {
+        e.preventDefault();
+        btn.classList.remove('drag-over');
+        if (draggedPageId && draggedPageId !== page.id) {
+          reorderPages(draggedPageId, page.id);
+        }
+      });
+
+      pageNav.appendChild(btn);
+    });
+  }
+
+  // -----------------------------------------
+  // Page switching
+  // -----------------------------------------
+
+  function switchPage(pageId) {
+    if (pageId === state.activePageId) return;
+    state.activePageId = pageId;
+    saveState();
+    renderSidebar();
+    renderColumns();
+  }
+
+  function reorderPages(fromId, toId) {
+    const fromIdx = state.pages.findIndex(p => p.id === fromId);
+    const toIdx = state.pages.findIndex(p => p.id === toId);
+    if (fromIdx === -1 || toIdx === -1 || fromIdx === toIdx) return;
+
+    const [moved] = state.pages.splice(fromIdx, 1);
+    state.pages.splice(toIdx, 0, moved);
+    saveState();
+    renderSidebar();
+  }
+
+  // -----------------------------------------
   // Column rendering
   // -----------------------------------------
 
   function renderColumns() {
     columnsScroll.innerHTML = '';
-    columnNav.innerHTML = '';
+    closeAllDropdowns();
 
-    if (columns.length === 0) {
+    const page = getActivePage();
+
+    if (!page || !page.columns || page.columns.length === 0) {
       emptyState.classList.remove('hidden');
+      if (page) {
+        emptyStateEmoji.textContent = page.emoji;
+        emptyStateTitle.textContent = page.name;
+        emptyStateDesc.textContent = 'This page has no columns yet. Add one to get started.';
+      } else {
+        emptyStateEmoji.textContent = '📭';
+        emptyStateTitle.textContent = 'No pages';
+        emptyStateDesc.textContent = 'Create a page to get started.';
+      }
       return;
     }
 
     emptyState.classList.add('hidden');
 
-    columns.forEach((col, index) => {
-      // Create column element
+    page.columns.forEach((col, index) => {
       const colEl = document.createElement('div');
       colEl.className = 'deck-column';
       colEl.dataset.id = col.id;
-      colEl.style.setProperty('--column-width', settings.columnWidth + 'px');
-      colEl.style.flex = `0 0 ${settings.columnWidth}px`;
-      colEl.style.width = settings.columnWidth + 'px';
+      colEl.style.setProperty('--column-width', state.settings.columnWidth + 'px');
+      colEl.style.flex = `0 0 ${state.settings.columnWidth}px`;
+      colEl.style.width = state.settings.columnWidth + 'px';
 
       const typeDef = COLUMN_TYPES[col.type] || COLUMN_TYPES.home;
       const iconSvg = ICONS[typeDef.icon] || ICONS.home;
+
+      const moveBtn = state.pages.length > 1
+        ? `<button class="col-btn" data-action="move" title="Move to another page">${ICONS.move}</button>`
+        : '';
 
       colEl.innerHTML = `
         <div class="column-header" draggable="true" data-col-id="${col.id}">
@@ -169,6 +325,7 @@
             <button class="col-btn" data-action="refresh" title="Refresh">
               ${ICONS.refresh}
             </button>
+            ${moveBtn}
             <button class="col-btn danger" data-action="close" title="Remove column">
               ${ICONS.close}
             </button>
@@ -177,7 +334,7 @@
         <div class="column-loading"><div class="spinner"></div></div>
       `;
 
-      // Create iframe after a short delay to stagger loading
+      // Staggered iframe creation
       setTimeout(() => {
         const loadingEl = colEl.querySelector('.column-loading');
         if (loadingEl) {
@@ -188,12 +345,11 @@
           iframe.loading = 'lazy';
 
           iframe.addEventListener('load', () => {
-            // Send init message to content script
             try {
               iframe.contentWindow.postMessage({ type: 'tweetdeckx-init' }, '*');
-              iframe.contentWindow.postMessage({ 
-                type: 'tweetdeckx-set-column-width', 
-                width: settings.columnWidth 
+              iframe.contentWindow.postMessage({
+                type: 'tweetdeckx-set-column-width',
+                width: state.settings.columnWidth
               }, '*');
             } catch (e) {
               // Cross-origin, content script handles it
@@ -202,7 +358,7 @@
 
           loadingEl.replaceWith(iframe);
         }
-      }, index * 200); // Stagger iframe loads
+      }, index * 200);
 
       // Column header button handlers
       colEl.addEventListener('click', (e) => {
@@ -215,53 +371,28 @@
         } else if (action === 'refresh') {
           const iframe = colEl.querySelector('iframe');
           if (iframe) {
-            iframe.src = iframe.src; // Force reload
+            iframe.src = iframe.src;
           }
+        } else if (action === 'move') {
+          toggleMoveDropdown(colEl, col.id);
         }
       });
 
-      // Drag-and-drop for reordering
+      // Column drag-and-drop
       const header = colEl.querySelector('.column-header');
-      setupDragDrop(header, colEl, col.id);
+      setupColumnDragDrop(header, colEl, col.id);
 
       columnsScroll.appendChild(colEl);
-
-      // Add sidebar nav item
-      const navBtn = document.createElement('button');
-      navBtn.className = 'nav-item';
-      navBtn.dataset.colId = col.id;
-      navBtn.innerHTML = iconSvg;
-      navBtn.title = col.title || getColumnTitle(col.type, col.param);
-      navBtn.addEventListener('click', () => scrollToColumn(col.id));
-      columnNav.appendChild(navBtn);
     });
 
-    // Highlight first visible column in sidebar
-    updateActiveNav();
-  }
-
-  // -----------------------------------------
-  // Scroll tracking for sidebar highlight
-  // -----------------------------------------
-
-  const container = document.getElementById('columns-container');
-  container.addEventListener('scroll', () => updateActiveNav());
-
-  function updateActiveNav() {
-    const scrollLeft = container.scrollLeft;
-    const colWidth = settings.columnWidth + 2; // include gap
-    const activeIndex = Math.round(scrollLeft / colWidth);
-
-    document.querySelectorAll('.nav-item').forEach((btn, i) => {
-      btn.classList.toggle('active', i === activeIndex);
+    // Trailing add-column button
+    const trailing = document.createElement('div');
+    trailing.className = 'add-column-trailing';
+    trailing.innerHTML = '<button class="add-column-circle" title="Add column">+</button>';
+    trailing.querySelector('.add-column-circle').addEventListener('click', () => {
+      openAddColumnModal();
     });
-  }
-
-  function scrollToColumn(colId) {
-    const colEl = columnsScroll.querySelector(`[data-id="${colId}"]`);
-    if (colEl) {
-      colEl.scrollIntoView({ behavior: 'smooth', inline: 'start', block: 'nearest' });
-    }
+    columnsScroll.appendChild(trailing);
   }
 
   // -----------------------------------------
@@ -269,48 +400,59 @@
   // -----------------------------------------
 
   function addColumn(type, param) {
-    const id = 'col_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6);
+    const page = getActivePage();
+    if (!page) return;
+
+    const id = generateId('col');
     const title = getColumnTitle(type, param);
     const col = { id, type, param: param || null, title };
-    columns.push(col);
+    page.columns.push(col);
     saveState();
     renderColumns();
 
-    // Scroll to the new column after render
     requestAnimationFrame(() => {
-      setTimeout(() => scrollToColumn(id), 300);
+      setTimeout(() => {
+        const colEl = columnsScroll.querySelector(`[data-id="${id}"]`);
+        if (colEl) {
+          colEl.scrollIntoView({ behavior: 'smooth', inline: 'start', block: 'nearest' });
+        }
+      }, 300);
     });
   }
 
   function removeColumn(colId) {
-    columns = columns.filter(c => c.id !== colId);
+    const page = getActivePage();
+    if (!page) return;
+    page.columns = page.columns.filter(c => c.id !== colId);
     saveState();
     renderColumns();
   }
 
   function reorderColumns(fromId, toId) {
-    const fromIdx = columns.findIndex(c => c.id === fromId);
-    const toIdx = columns.findIndex(c => c.id === toId);
+    const page = getActivePage();
+    if (!page) return;
+
+    const fromIdx = page.columns.findIndex(c => c.id === fromId);
+    const toIdx = page.columns.findIndex(c => c.id === toId);
     if (fromIdx === -1 || toIdx === -1 || fromIdx === toIdx) return;
 
-    const [moved] = columns.splice(fromIdx, 1);
-    columns.splice(toIdx, 0, moved);
+    const [moved] = page.columns.splice(fromIdx, 1);
+    page.columns.splice(toIdx, 0, moved);
     saveState();
     renderColumns();
   }
 
   // -----------------------------------------
-  // Drag and Drop
+  // Column drag-and-drop
   // -----------------------------------------
 
   let draggedColId = null;
 
-  function setupDragDrop(handle, colEl, colId) {
+  function setupColumnDragDrop(handle, colEl, colId) {
     handle.addEventListener('dragstart', (e) => {
       draggedColId = colId;
       colEl.classList.add('dragging');
       e.dataTransfer.effectAllowed = 'move';
-      // Needed for Firefox
       e.dataTransfer.setData('text/plain', colId);
     });
 
@@ -342,28 +484,284 @@
   }
 
   // -----------------------------------------
+  // Move column dropdown
+  // -----------------------------------------
+
+  function closeAllDropdowns() {
+    document.querySelectorAll('.move-dropdown').forEach(el => el.remove());
+  }
+
+  function toggleMoveDropdown(colEl, colId) {
+    const existing = colEl.querySelector('.move-dropdown');
+    if (existing) {
+      existing.remove();
+      return;
+    }
+
+    closeAllDropdowns();
+
+    const dropdown = document.createElement('div');
+    dropdown.className = 'move-dropdown';
+
+    const header = document.createElement('div');
+    header.className = 'move-dropdown-header';
+    header.textContent = 'Move to\u2026';
+    dropdown.appendChild(header);
+
+    state.pages.forEach((page) => {
+      if (page.id === state.activePageId) return;
+
+      const item = document.createElement('button');
+      item.className = 'move-dropdown-item';
+      item.innerHTML = `<span class="move-emoji">${page.emoji}</span> ${escapeHtml(page.name)}`;
+      item.addEventListener('click', () => {
+        moveColumn(colId, page.id);
+        dropdown.remove();
+      });
+      dropdown.appendChild(item);
+    });
+
+    colEl.appendChild(dropdown);
+
+    // Dismiss on outside click
+    const dismissHandler = (e) => {
+      if (!dropdown.contains(e.target) && !e.target.closest('[data-action="move"]')) {
+        dropdown.remove();
+        document.removeEventListener('click', dismissHandler, true);
+      }
+    };
+    setTimeout(() => {
+      document.addEventListener('click', dismissHandler, true);
+    }, 0);
+  }
+
+  function moveColumn(colId, targetPageId) {
+    const sourcePage = getActivePage();
+    if (!sourcePage) return;
+
+    const targetPage = state.pages.find(p => p.id === targetPageId);
+    if (!targetPage) return;
+
+    const colIdx = sourcePage.columns.findIndex(c => c.id === colId);
+    if (colIdx === -1) return;
+
+    const [col] = sourcePage.columns.splice(colIdx, 1);
+    targetPage.columns.push(col);
+    saveState();
+    renderColumns();
+  }
+
+  // -----------------------------------------
+  // Page modal + emoji picker
+  // -----------------------------------------
+
+  let pageModalMode = null;
+  let editingPageId = null;
+  let selectedEmoji = null;
+
+  function openPageModal(mode, page) {
+    pageModalMode = mode;
+
+    if (mode === 'edit' && page) {
+      editingPageId = page.id;
+      selectedEmoji = page.emoji;
+      pageModalTitle.textContent = 'Edit Page';
+      pageNameInput.value = page.name;
+      btnPageSave.textContent = 'Save';
+      if (state.pages.length > 1) {
+        btnPageDelete.classList.remove('hidden');
+      } else {
+        btnPageDelete.classList.add('hidden');
+      }
+    } else {
+      editingPageId = null;
+      selectedEmoji = randomEmoji();
+      pageModalTitle.textContent = 'New Page';
+      pageNameInput.value = '';
+      btnPageSave.textContent = 'Create Page';
+      btnPageDelete.classList.add('hidden');
+    }
+
+    pageEmojiBtn.textContent = selectedEmoji;
+    buildEmojiPicker();
+    emojiPicker.classList.add('hidden');
+    pageModalOverlay.classList.remove('hidden');
+    pageNameInput.focus();
+  }
+
+  function closePageModal() {
+    pageModalOverlay.classList.add('hidden');
+    emojiPicker.classList.add('hidden');
+    pageModalMode = null;
+    editingPageId = null;
+    selectedEmoji = null;
+  }
+
+  function buildEmojiPicker() {
+    emojiPicker.innerHTML = '';
+
+    EMOJI_POOL.forEach((cat) => {
+      const label = document.createElement('div');
+      label.className = 'emoji-picker-category';
+      label.textContent = cat.category;
+      emojiPicker.appendChild(label);
+
+      const grid = document.createElement('div');
+      grid.className = 'emoji-picker-grid';
+
+      cat.emojis.forEach((emoji) => {
+        const btn = document.createElement('button');
+        btn.className = 'emoji-pick' + (emoji === selectedEmoji ? ' selected' : '');
+        btn.textContent = emoji;
+        btn.addEventListener('click', () => {
+          selectedEmoji = emoji;
+          pageEmojiBtn.textContent = emoji;
+          emojiPicker.querySelectorAll('.emoji-pick').forEach(b => b.classList.remove('selected'));
+          btn.classList.add('selected');
+          emojiPicker.classList.add('hidden');
+          pageEmojiBtn.classList.remove('active');
+        });
+        grid.appendChild(btn);
+      });
+
+      emojiPicker.appendChild(grid);
+    });
+  }
+
+  // Emoji button toggle
+  pageEmojiBtn.addEventListener('click', () => {
+    const isOpen = !emojiPicker.classList.contains('hidden');
+    if (isOpen) {
+      emojiPicker.classList.add('hidden');
+      pageEmojiBtn.classList.remove('active');
+    } else {
+      emojiPicker.classList.remove('hidden');
+      pageEmojiBtn.classList.add('active');
+    }
+  });
+
+  // Close emoji picker on outside click
+  document.addEventListener('click', (e) => {
+    if (!emojiPicker.classList.contains('hidden') &&
+        !emojiPicker.contains(e.target) &&
+        e.target !== pageEmojiBtn) {
+      emojiPicker.classList.add('hidden');
+      pageEmojiBtn.classList.remove('active');
+    }
+  });
+
+  // Page modal close handlers
+  document.getElementById('page-modal-close').addEventListener('click', closePageModal);
+  pageModalOverlay.addEventListener('click', (e) => {
+    if (e.target === pageModalOverlay) closePageModal();
+  });
+
+  // Save button
+  btnPageSave.addEventListener('click', () => {
+    const name = pageNameInput.value.trim();
+    if (!name) {
+      pageNameInput.focus();
+      return;
+    }
+
+    if (pageModalMode === 'create') {
+      createPage(name, selectedEmoji);
+    } else if (pageModalMode === 'edit' && editingPageId) {
+      updatePage(editingPageId, name, selectedEmoji);
+    }
+
+    closePageModal();
+  });
+
+  // Enter in name input
+  pageNameInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      btnPageSave.click();
+    }
+  });
+
+  // Delete button
+  btnPageDelete.addEventListener('click', () => {
+    if (!editingPageId) return;
+    const page = state.pages.find(p => p.id === editingPageId);
+    if (!page) return;
+
+    const hasColumns = page.columns && page.columns.length > 0;
+    const msg = hasColumns
+      ? `Delete "${page.name}"? This page has ${page.columns.length} column(s) that will be removed.`
+      : `Delete "${page.name}"?`;
+
+    if (confirm(msg)) {
+      deletePage(editingPageId);
+      closePageModal();
+    }
+  });
+
+  // -----------------------------------------
+  // Page CRUD
+  // -----------------------------------------
+
+  function createPage(name, emoji) {
+    const page = {
+      id: generateId('page'),
+      name: name,
+      emoji: emoji,
+      columns: [],
+    };
+    state.pages.push(page);
+    state.activePageId = page.id;
+    saveState();
+    renderSidebar();
+    renderColumns();
+  }
+
+  function updatePage(pageId, name, emoji) {
+    const page = state.pages.find(p => p.id === pageId);
+    if (!page) return;
+    page.name = name;
+    page.emoji = emoji;
+    saveState();
+    renderSidebar();
+  }
+
+  function deletePage(pageId) {
+    state.pages = state.pages.filter(p => p.id !== pageId);
+    if (state.activePageId === pageId) {
+      state.activePageId = state.pages.length > 0 ? state.pages[0].id : null;
+    }
+    saveState();
+    renderSidebar();
+    renderColumns();
+  }
+
+  // Add page button
+  document.getElementById('btn-add-page').addEventListener('click', () => {
+    openPageModal('create');
+  });
+
+  // -----------------------------------------
   // Add Column Modal
   // -----------------------------------------
 
   let selectedType = null;
 
-  document.getElementById('btn-add-column').addEventListener('click', () => {
+  function openAddColumnModal() {
     selectedType = null;
     typeInputArea.classList.add('hidden');
     typeInput.value = '';
     document.querySelectorAll('.type-card').forEach(c => c.classList.remove('selected'));
     modalOverlay.classList.remove('hidden');
-  });
-
-  document.getElementById('modal-close').addEventListener('click', closeModal);
-  modalOverlay.addEventListener('click', (e) => {
-    if (e.target === modalOverlay) closeModal();
-  });
+  }
 
   function closeModal() {
     modalOverlay.classList.add('hidden');
     selectedType = null;
   }
+
+  document.getElementById('modal-close').addEventListener('click', closeModal);
+  modalOverlay.addEventListener('click', (e) => {
+    if (e.target === modalOverlay) closeModal();
+  });
 
   // Type card selection
   document.querySelectorAll('.type-card').forEach((card) => {
@@ -381,7 +779,6 @@
         typeInputArea.classList.remove('hidden');
         typeInput.focus();
       } else {
-        // Add column immediately
         addColumn(type);
         closeModal();
       }
@@ -402,12 +799,9 @@
     closeModal();
   }
 
-  // Keyboard shortcut to close modals
-  document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape') {
-      if (!modalOverlay.classList.contains('hidden')) closeModal();
-      if (!settingsOverlay.classList.contains('hidden')) closeSettingsModal();
-    }
+  // Empty state add-column button
+  document.getElementById('btn-add-column-empty').addEventListener('click', () => {
+    openAddColumnModal();
   });
 
   // -----------------------------------------
@@ -415,9 +809,9 @@
   // -----------------------------------------
 
   document.getElementById('btn-settings').addEventListener('click', () => {
-    colWidthSlider.value = settings.columnWidth;
-    colWidthValue.textContent = settings.columnWidth + 'px';
-    themeSelect.value = settings.theme;
+    colWidthSlider.value = state.settings.columnWidth;
+    colWidthValue.textContent = state.settings.columnWidth + 'px';
+    themeSelect.value = state.settings.theme;
     settingsOverlay.classList.remove('hidden');
   });
 
@@ -433,9 +827,8 @@
   colWidthSlider.addEventListener('input', () => {
     const val = parseInt(colWidthSlider.value);
     colWidthValue.textContent = val + 'px';
-    settings.columnWidth = val;
+    state.settings.columnWidth = val;
     saveState();
-    // Update existing column widths
     document.querySelectorAll('.deck-column').forEach(col => {
       col.style.flex = `0 0 ${val}px`;
       col.style.width = val + 'px';
@@ -443,33 +836,40 @@
   });
 
   themeSelect.addEventListener('change', () => {
-    settings.theme = themeSelect.value;
+    state.settings.theme = themeSelect.value;
     applyTheme();
     saveState();
   });
 
-  document.getElementById('btn-reset-columns').addEventListener('click', () => {
-    if (confirm('Remove all columns? This cannot be undone.')) {
-      columns = [];
+  document.getElementById('btn-reset-pages').addEventListener('click', () => {
+    if (confirm('Reset all pages? This will remove all pages and columns and cannot be undone.')) {
+      const defaultPage = {
+        id: generateId('page'),
+        name: 'Home',
+        emoji: '🏠',
+        columns: [],
+      };
+      state.pages = [defaultPage];
+      state.activePageId = defaultPage.id;
       saveState();
+      renderSidebar();
       renderColumns();
       closeSettingsModal();
     }
   });
 
-  function applyTheme() {
-    document.documentElement.setAttribute('data-theme', settings.theme);
-  }
-
   // -----------------------------------------
-  // Utilities
+  // Keyboard shortcuts
   // -----------------------------------------
 
-  function escapeHtml(str) {
-    const div = document.createElement('div');
-    div.textContent = str;
-    return div.innerHTML;
-  }
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      if (!modalOverlay.classList.contains('hidden')) closeModal();
+      if (!settingsOverlay.classList.contains('hidden')) closeSettingsModal();
+      if (!pageModalOverlay.classList.contains('hidden')) closePageModal();
+      closeAllDropdowns();
+    }
+  });
 
   // -----------------------------------------
   // Init
@@ -477,13 +877,29 @@
 
   async function init() {
     await loadState();
-    applyTheme();
-    renderColumns();
 
-    // If no columns, show some defaults for first-time users
-    if (columns.length === 0) {
-      // Empty state is already visible
+    // Remove old storage keys from pre-pages era
+    chrome.storage.local.remove(['tweetdeckx_columns', 'tweetdeckx_settings']);
+
+    // Create default page if none exist
+    if (state.pages.length === 0) {
+      state.pages.push({
+        id: generateId('page'),
+        name: 'Home',
+        emoji: '🏠',
+        columns: [],
+      });
     }
+
+    // Ensure activePageId is valid
+    if (!state.pages.find(p => p.id === state.activePageId)) {
+      state.activePageId = state.pages[0].id;
+    }
+
+    saveState();
+    applyTheme();
+    renderSidebar();
+    renderColumns();
   }
 
   init();
