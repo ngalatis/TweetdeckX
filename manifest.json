@@ -12,7 +12,8 @@
     "storage",
     "cookies",
     "declarativeNetRequest",
-    "declarativeNetRequestFeedback"
+    "declarativeNetRequestFeedback",
+    "webRequest"
   ],
   "host_permissions": [
     "https://x.com/*",

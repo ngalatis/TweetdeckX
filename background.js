@@ -125,3 +125,21 @@ if (chrome.declarativeNetRequest.onRuleMatchedDebug) {
     console.log('Rule matched:', info.request.url, 'Rule ID:', info.rule.ruleId, 'Type:', info.request.type);
   });
 }
+
+// -------------------------------------------------------
+// Rate limit (429) detection
+// -------------------------------------------------------
+// Monitor responses from X.com for 429 status codes.
+// When detected, notify the deck page so it can pause loading
+// and warn the user.
+
+chrome.webRequest.onCompleted.addListener(
+  (details) => {
+    if (details.statusCode === 429) {
+      chrome.runtime.sendMessage({ type: 'tweetdeckx-rate-limited' }).catch(() => {
+        // Deck page may not be open — ignore
+      });
+    }
+  },
+  { urls: ['https://x.com/*', 'https://api.x.com/*'] }
+);

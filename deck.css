@@ -865,3 +865,81 @@ html, body {
   opacity: 0.3;
   margin-bottom: 16px;
 }
+
+/* =========================================
+   Rate Limit Toast
+   ========================================= */
+
+.toast {
+  position: fixed;
+  top: 0;
+  left: var(--sidebar-width);
+  right: 0;
+  z-index: 180;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 16px;
+  background: #7c4a00;
+  border-bottom: 1px solid #a06000;
+  color: #ffd580;
+  font-size: 13px;
+  animation: toastSlideDown 0.25s ease;
+}
+
+.toast.hidden {
+  display: none;
+}
+
+@keyframes toastSlideDown {
+  from { transform: translateY(-100%); }
+  to { transform: translateY(0); }
+}
+
+.toast-icon {
+  font-size: 16px;
+  flex-shrink: 0;
+}
+
+.toast-text {
+  flex: 1;
+}
+
+.toast-close {
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: none;
+  color: #ffd580;
+  font-size: 18px;
+  cursor: pointer;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+
+.toast-close:hover {
+  background: rgba(255, 213, 128, 0.15);
+}
+
+[data-theme="light"] .toast {
+  background: #fff3cd;
+  border-bottom-color: #ffc107;
+  color: #664d03;
+}
+
+[data-theme="light"] .toast-close {
+  color: #664d03;
+}
+
+[data-theme="light"] .toast-close:hover {
+  background: rgba(102, 77, 3, 0.1);
+}
+
+[data-theme="dim"] .toast {
+  background: #3d2e00;
+  border-bottom-color: #6b5000;
+  color: #ffd580;
+}
