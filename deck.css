@@ -959,3 +959,76 @@ html, body {
   border-bottom-color: #6b5000;
   color: #ffd580;
 }
+
+/* =========================================
+   Update Notification Toast (info variant)
+   ========================================= */
+
+.toast.toast-info {
+  background: #003d7c;
+  border-bottom-color: #0060a0;
+  color: #80c8ff;
+}
+
+.toast.toast-info .toast-close {
+  color: #80c8ff;
+}
+
+.toast.toast-info .toast-close:hover {
+  background: rgba(128, 200, 255, 0.15);
+}
+
+.toast-action {
+  padding: 4px 12px;
+  border-radius: 4px;
+  background: rgba(128, 200, 255, 0.2);
+  color: #80c8ff;
+  text-decoration: none;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition: background 0.15s;
+}
+
+.toast-action:hover {
+  background: rgba(128, 200, 255, 0.35);
+}
+
+[data-theme="light"] .toast.toast-info {
+  background: #cce5ff;
+  border-bottom-color: #4da6ff;
+  color: #003366;
+}
+
+[data-theme="light"] .toast.toast-info .toast-close {
+  color: #003366;
+}
+
+[data-theme="light"] .toast.toast-info .toast-close:hover {
+  background: rgba(0, 51, 102, 0.1);
+}
+
+[data-theme="light"] .toast-action {
+  background: rgba(0, 51, 102, 0.15);
+  color: #003366;
+}
+
+[data-theme="light"] .toast-action:hover {
+  background: rgba(0, 51, 102, 0.25);
+}
+
+[data-theme="dim"] .toast.toast-info {
+  background: #002d5c;
+  border-bottom-color: #004d8c;
+  color: #80c8ff;
+}
+
+[data-theme="dim"] .toast-action {
+  background: rgba(128, 200, 255, 0.15);
+  color: #80c8ff;
+}
+
+[data-theme="dim"] .toast-action:hover {
+  background: rgba(128, 200, 255, 0.3);
+}

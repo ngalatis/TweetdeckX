@@ -429,6 +429,9 @@
   const btnPageDelete = document.getElementById('btn-page-delete');
 
   const rateLimitToast = document.getElementById('rate-limit-toast');
+  const updateToast = document.getElementById('update-toast');
+  const updateVersion = document.getElementById('update-version');
+  const updateLink = document.getElementById('update-link');
 
   const settingsOverlay = document.getElementById('settings-overlay');
   const colWidthSlider = document.getElementById('col-width-slider');
@@ -1505,9 +1508,27 @@
 
   chrome.runtime.onMessage.addListener((msg) => {
     if (msg.type === 'tweetdeckx-rate-limited') showRateLimitToast();
+    if (msg.type === 'tweetdeckx-update-available') showUpdateToast(msg.version, msg.url);
   });
 
   document.getElementById('toast-close').addEventListener('click', dismissRateLimitToast);
+
+  // -----------------------------------------
+  // Update notification toast
+  // -----------------------------------------
+
+  function showUpdateToast(version, url) {
+    if (!updateToast.classList.contains('hidden')) return;
+    updateVersion.textContent = 'v' + version;
+    updateLink.href = url;
+    updateToast.classList.remove('hidden');
+  }
+
+  function dismissUpdateToast() {
+    updateToast.classList.add('hidden');
+  }
+
+  document.getElementById('update-toast-close').addEventListener('click', dismissUpdateToast);
 
   // -----------------------------------------
   // Init
@@ -1538,6 +1559,9 @@
     applyTheme();
     renderSidebar();
     renderColumns();
+
+    // Request an update check from the background script
+    chrome.runtime.sendMessage({ type: 'tweetdeckx-check-update' }).catch(() => {});
   }
 
   init();
