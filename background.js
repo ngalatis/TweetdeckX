@@ -147,3 +147,61 @@ chrome.webRequest.onCompleted.addListener(
   },
   { urls: ['https://x.com/*', 'https://api.x.com/*'] }
 );
+
+// -------------------------------------------------------
+// Update notification
+// -------------------------------------------------------
+// Check GitHub releases for newer versions and notify the
+// deck page so it can show an update banner.
+
+const GITHUB_RELEASES_URL = 'https://api.github.com/repos/ngalatis/TweetdeckX/releases/latest';
+const UPDATE_CHECK_INTERVAL = 6 * 60 * 60 * 1000; // 6 hours
+
+function compareVersions(a, b) {
+  const pa = a.split('.').map(Number);
+  const pb = b.split('.').map(Number);
+  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+    const na = pa[i] || 0;
+    const nb = pb[i] || 0;
+    if (na > nb) return 1;
+    if (na < nb) return -1;
+  }
+  return 0;
+}
+
+async function checkForUpdate() {
+  try {
+    const resp = await fetch(GITHUB_RELEASES_URL, {
+      headers: { 'Accept': 'application/vnd.github.v3+json' },
+    });
+    if (!resp.ok) return;
+    const release = await resp.json();
+    const latestTag = (release.tag_name || '').replace(/^v/, '');
+    if (!latestTag) return;
+    const currentVersion = chrome.runtime.getManifest().version;
+    if (compareVersions(latestTag, currentVersion) > 0) {
+      chrome.runtime.sendMessage({
+        type: 'tweetdeckx-update-available',
+        version: latestTag,
+        url: release.html_url,
+      }).catch(() => {
+        // Deck page may not be open — ignore
+      });
+    }
+  } catch (e) {
+    // Network error — silently ignore
+  }
+}
+
+// Check on startup (with a short delay to not compete with other init work)
+setTimeout(checkForUpdate, 10000);
+
+// Check periodically
+setInterval(checkForUpdate, UPDATE_CHECK_INTERVAL);
+
+// Allow the deck page to request an update check on demand
+chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+  if (msg.type === 'tweetdeckx-check-update') {
+    checkForUpdate();
+  }
+});
