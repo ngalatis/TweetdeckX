@@ -59,6 +59,11 @@
           _intervals[id].realId = null;
         }
       }
+      // Pause all videos so they stop cleanly instead of stalling mid-buffer
+      var videos = document.querySelectorAll('video');
+      for (var i = 0; i < videos.length; i++) {
+        try { videos[i].pause(); } catch (e) {}
+      }
     } else if (e.data.type === 'tweetdeckx-resume') {
       _paused = false;
       for (var id in _intervals) {
@@ -69,4 +74,19 @@
       }
     }
   });
+
+  // --- User activity detection ---
+  // Scroll/click events inside iframes don't propagate to the parent deck page.
+  // Notify parent of user activity so the column stays active during interaction.
+  var _lastActivityNotify = 0;
+  function notifyActivity() {
+    var now = Date.now();
+    if (now - _lastActivityNotify > 5000) {
+      _lastActivityNotify = now;
+      window.postMessage({ type: 'tweetdeckx-user-activity' }, '*');
+    }
+  }
+  document.addEventListener('scroll', notifyActivity, { passive: true, capture: true });
+  document.addEventListener('click', notifyActivity, { capture: true });
+  document.addEventListener('keydown', notifyActivity, { capture: true });
 })();
