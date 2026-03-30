@@ -46,10 +46,6 @@
     if (e.data && e.data.type === 'tweetdeckx-set-hide-ads') {
       applyHideAds(e.data.enabled);
     }
-    // Forward video playback state from page-context.js (MAIN world) to deck.html parent
-    if (e.data && (e.data.type === 'tweetdeckx-video-playing' || e.data.type === 'tweetdeckx-video-stopped')) {
-      try { window.parent.postMessage(e.data, '*'); } catch (err) {}
-    }
     // Forward user activity (scroll/click/keydown) so deck keeps the column active
     if (e.data && e.data.type === 'tweetdeckx-user-activity') {
       try { window.parent.postMessage(e.data, '*'); } catch (err) {}
