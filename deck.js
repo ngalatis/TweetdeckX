@@ -504,6 +504,65 @@
   });
 
   // -----------------------------------------
+  // Lightbox: expand iframe to full viewport
+  // -----------------------------------------
+
+  let lightboxIframe = null;
+  let lightboxBackdrop = null;
+
+  function expandIframeForLightbox(iframe) {
+    if (lightboxIframe) return; // already expanded
+    lightboxIframe = iframe;
+
+    // Create backdrop
+    lightboxBackdrop = document.createElement('div');
+    lightboxBackdrop.className = 'lightbox-backdrop';
+    document.body.appendChild(lightboxBackdrop);
+
+    // Expand the column
+    const colEl = iframe.closest('.deck-column');
+    if (colEl) colEl.classList.add('lightbox-active');
+  }
+
+  function collapseIframeFromLightbox() {
+    if (!lightboxIframe) return;
+
+    const colEl = lightboxIframe.closest('.deck-column');
+    if (colEl) colEl.classList.remove('lightbox-active');
+
+    if (lightboxBackdrop) {
+      lightboxBackdrop.remove();
+      lightboxBackdrop = null;
+    }
+
+    lightboxIframe = null;
+  }
+
+  window.addEventListener('message', (e) => {
+    if (!e.data) return;
+    if (e.data.type === 'tweetdeckx-lightbox-opened') {
+      // For videos, don't expand — let X.com's native fullscreen button work
+      if (e.data.hasVideo) return;
+      const iframes = columnsContainer.querySelectorAll('iframe');
+      for (const iframe of iframes) {
+        if (iframe.contentWindow === e.source) {
+          expandIframeForLightbox(iframe);
+          break;
+        }
+      }
+    } else if (e.data.type === 'tweetdeckx-lightbox-closed') {
+      collapseIframeFromLightbox();
+    }
+  });
+
+  // Also collapse on Escape key (fallback in case X.com closes lightbox without URL change)
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && lightboxIframe) {
+      collapseIframeFromLightbox();
+    }
+  });
+
+  // -----------------------------------------
   // Persistence (chrome.storage.local)
   // -----------------------------------------
 

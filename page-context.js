@@ -75,6 +75,48 @@
     }
   });
 
+  // --- Lightbox detection ---
+  // Detect when X.com opens its image/media lightbox by monitoring URL changes
+  // for /photo/ patterns. Notify parent so the iframe can expand to full viewport.
+  var _lightboxOpen = false;
+
+  function checkLightbox() {
+    var isPhoto = /\/photo\/\d+/.test(window.location.pathname);
+    if (isPhoto && !_lightboxOpen) {
+      _lightboxOpen = true;
+      // Delay to let X.com's React render the lightbox content,
+      // then check if it contains a video element.
+      setTimeout(function () {
+        var hasVideo = !!document.querySelector(
+          'video, [data-testid="videoPlayer"], [data-testid="videoComponent"]'
+        );
+        window.postMessage({ type: 'tweetdeckx-lightbox-opened', hasVideo: hasVideo }, '*');
+      }, 300);
+    } else if (!isPhoto && _lightboxOpen) {
+      _lightboxOpen = false;
+      window.postMessage({ type: 'tweetdeckx-lightbox-closed' }, '*');
+    }
+  }
+
+  var _origPushState = history.pushState;
+  var _origReplaceState = history.replaceState;
+
+  history.pushState = function () {
+    var result = _origPushState.apply(this, arguments);
+    checkLightbox();
+    return result;
+  };
+
+  history.replaceState = function () {
+    var result = _origReplaceState.apply(this, arguments);
+    checkLightbox();
+    return result;
+  };
+
+  window.addEventListener('popstate', function () {
+    checkLightbox();
+  });
+
   // --- User activity detection ---
   // Scroll/click events inside iframes don't propagate to the parent deck page.
   // Notify parent of user activity so the column stays active during interaction.
