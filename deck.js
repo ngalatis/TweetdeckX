@@ -297,11 +297,7 @@
 
   function activateColumn(colId) {
     if (activeColumnId && activeColumnId !== colId) {
-      // Don't pause the previous column if it has a playing video — pausing
-      // kills MSE segment fetching. It will be paused when the video stops.
-      if (!videoPlayingColumns.has(activeColumnId)) {
-        pauseColumn(activeColumnId);
-      }
+      pauseColumn(activeColumnId);
     }
     activeColumnId = colId;
     resumeColumn(colId);
@@ -311,11 +307,6 @@
 
   function deactivateActiveColumn() {
     if (activeColumnId) {
-      // Don't deactivate if a video is playing — pausing intervals kills MSE streaming
-      if (videoPlayingColumns.has(activeColumnId)) {
-        resetIdleTimer();
-        return;
-      }
       pauseColumn(activeColumnId);
       activeColumnId = null;
     }
@@ -391,7 +382,9 @@
     });
 
     colEl.addEventListener('mouseenter', () => {
-      if (activeColumnId === colId) {
+      if (activeColumnId !== colId) {
+        activateColumn(colId);
+      } else {
         resetIdleTimer();
       }
     });
@@ -451,11 +444,11 @@
   // Column activation is now handled per-column by attachColumnInteractionListeners()
 
   // -----------------------------------------
-  // Iframe focus & video playback detection
+  // Iframe interaction detection
   // -----------------------------------------
   // Iframes capture all mouse/keyboard events, making the deck blind to user
-  // activity within columns. This causes the idle timer to fire and pause
-  // intervals — which kills MSE video segment fetching.
+  // activity within columns. These listeners supplement mouseenter (which only
+  // fires on the column boundary, not inside the iframe).
 
   // Detect when user clicks inside an iframe (iframe receives focus)
   window.addEventListener('blur', () => {
@@ -491,54 +484,21 @@
     }
   }, 10000);
 
-  // Track columns with active video playback
-  const videoPlayingColumns = new Set();
-
+  // Handle user activity relayed from inside iframes (scroll/click/keydown)
   window.addEventListener('message', (e) => {
-    if (!e.data) return;
-
-    // Helper: find column ID from iframe source
-    function columnIdFromSource(source) {
-      const iframes = columnsContainer.querySelectorAll('iframe');
-      for (const iframe of iframes) {
-        if (iframe.contentWindow === source) {
-          const colEl = iframe.closest('.deck-column');
-          return colEl ? colEl.dataset.id : null;
-        }
-      }
-      return null;
-    }
-
-    if (e.data.type === 'tweetdeckx-video-playing' || e.data.type === 'tweetdeckx-video-stopped') {
-      const colId = columnIdFromSource(e.source);
-      if (!colId) return;
-
-      if (e.data.type === 'tweetdeckx-video-playing') {
-        videoPlayingColumns.add(colId);
-        if (activeColumnId === colId) {
-          resetIdleTimer();
-        } else {
-          // Video playing in a non-active column — resume its intervals
-          // so MSE segment fetching continues. Will be paused when video stops.
-          resumeColumn(colId);
-        }
-      } else {
-        videoPlayingColumns.delete(colId);
-        // Video stopped in a non-active column — safe to pause it now
+    if (!e.data || e.data.type !== 'tweetdeckx-user-activity') return;
+    const iframes = columnsContainer.querySelectorAll('iframe');
+    for (const iframe of iframes) {
+      if (iframe.contentWindow === e.source) {
+        const colEl = iframe.closest('.deck-column');
+        if (!colEl) break;
+        const colId = colEl.dataset.id;
         if (activeColumnId !== colId) {
-          pauseColumn(colId);
+          activateColumn(colId);
+        } else {
+          resetIdleTimer();
         }
-      }
-    }
-
-    // User scrolled/clicked/typed inside an iframe — keep the column active
-    if (e.data.type === 'tweetdeckx-user-activity') {
-      const colId = columnIdFromSource(e.source);
-      if (!colId) return;
-      if (activeColumnId !== colId) {
-        activateColumn(colId);
-      } else {
-        resetIdleTimer();
+        break;
       }
     }
   });
@@ -996,8 +956,7 @@
     page.columns = page.columns.filter(c => c.id !== colId);
     saveState();
 
-    // Clean up video state and timers for this column
-    videoPlayingColumns.delete(colId);
+    // Clean up timers for this column
     if (activeColumnId === colId) {
       deactivateActiveColumn();
     }

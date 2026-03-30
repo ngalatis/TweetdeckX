@@ -59,6 +59,11 @@
           _intervals[id].realId = null;
         }
       }
+      // Pause all videos so they stop cleanly instead of stalling mid-buffer
+      var videos = document.querySelectorAll('video');
+      for (var i = 0; i < videos.length; i++) {
+        try { videos[i].pause(); } catch (e) {}
+      }
     } else if (e.data.type === 'tweetdeckx-resume') {
       _paused = false;
       for (var id in _intervals) {
@@ -69,32 +74,6 @@
       }
     }
   });
-
-  // --- Video playback detection ---
-  // When a video is playing, notify the parent so the column stays active
-  // and intervals aren't paused (which kills MSE segment fetching).
-  var _videoPlaying = false;
-
-  function checkVideoState() {
-    var videos = document.querySelectorAll('video');
-    var anyPlaying = false;
-    for (var i = 0; i < videos.length; i++) {
-      if (!videos[i].paused && !videos[i].ended && videos[i].readyState > 2) {
-        anyPlaying = true;
-        break;
-      }
-    }
-    if (anyPlaying !== _videoPlaying) {
-      _videoPlaying = anyPlaying;
-      window.postMessage({
-        type: anyPlaying ? 'tweetdeckx-video-playing' : 'tweetdeckx-video-stopped'
-      }, '*');
-    }
-  }
-
-  // Poll for video state changes (events on dynamically-created video elements
-  // are unreliable, and X.com creates/destroys them frequently)
-  _origSetInterval.call(window, checkVideoState, 2000);
 
   // --- User activity detection ---
   // Scroll/click events inside iframes don't propagate to the parent deck page.
