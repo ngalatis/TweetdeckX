@@ -50,6 +50,10 @@
     if (e.data && e.data.type === 'tweetdeckx-user-activity') {
       try { window.parent.postMessage(e.data, '*'); } catch (err) {}
     }
+    // Forward lightbox open/close to deck page so it can expand the iframe
+    if (e.data && (e.data.type === 'tweetdeckx-lightbox-opened' || e.data.type === 'tweetdeckx-lightbox-closed')) {
+      try { window.parent.postMessage(e.data, '*'); } catch (err) {}
+    }
   });
 
   // Cross-origin detection fallback
@@ -205,7 +209,7 @@
       style.id = id;
       style.textContent = `
         /* Hide promoted tweets (exclude cells containing video) */
-        [data-testid="cellInnerDiv"]:has([data-testid="placementTracking"]):not(:has(video, [data-testid="videoPlayer"], [data-testid="videoComponent"])) {
+        [data-testid="cellInnerDiv"]:has([data-testid="placementTracking"] > [data-testid="top-impression-pixel"]) {
           display: none !important;
         }
 
