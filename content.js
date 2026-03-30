@@ -46,6 +46,10 @@
     if (e.data && e.data.type === 'tweetdeckx-set-hide-ads') {
       applyHideAds(e.data.enabled);
     }
+    // Forward user activity (scroll/click/keydown) so deck keeps the column active
+    if (e.data && e.data.type === 'tweetdeckx-user-activity') {
+      try { window.parent.postMessage(e.data, '*'); } catch (err) {}
+    }
   });
 
   // Cross-origin detection fallback

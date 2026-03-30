@@ -382,7 +382,9 @@
     });
 
     colEl.addEventListener('mouseenter', () => {
-      if (activeColumnId === colId) {
+      if (activeColumnId !== colId) {
+        activateColumn(colId);
+      } else {
         resetIdleTimer();
       }
     });
@@ -440,6 +442,66 @@
   const hideAdsToggle = document.getElementById('hide-ads-toggle');
 
   // Column activation is now handled per-column by attachColumnInteractionListeners()
+
+  // -----------------------------------------
+  // Iframe interaction detection
+  // -----------------------------------------
+  // Iframes capture all mouse/keyboard events, making the deck blind to user
+  // activity within columns. These listeners supplement mouseenter (which only
+  // fires on the column boundary, not inside the iframe).
+
+  // Detect when user clicks inside an iframe (iframe receives focus)
+  window.addEventListener('blur', () => {
+    setTimeout(() => {
+      const el = document.activeElement;
+      if (el && el.tagName === 'IFRAME') {
+        const colEl = el.closest('.deck-column');
+        if (colEl) {
+          const colId = colEl.dataset.id;
+          if (activeColumnId !== colId) {
+            activateColumn(colId);
+          } else {
+            resetIdleTimer();
+          }
+        }
+      }
+    }, 0);
+  });
+
+  // Periodic fallback: if an iframe still has focus, keep the column active
+  setInterval(() => {
+    const el = document.activeElement;
+    if (el && el.tagName === 'IFRAME') {
+      const colEl = el.closest('.deck-column');
+      if (colEl) {
+        const colId = colEl.dataset.id;
+        if (activeColumnId !== colId) {
+          activateColumn(colId);
+        } else {
+          resetIdleTimer();
+        }
+      }
+    }
+  }, 10000);
+
+  // Handle user activity relayed from inside iframes (scroll/click/keydown)
+  window.addEventListener('message', (e) => {
+    if (!e.data || e.data.type !== 'tweetdeckx-user-activity') return;
+    const iframes = columnsContainer.querySelectorAll('iframe');
+    for (const iframe of iframes) {
+      if (iframe.contentWindow === e.source) {
+        const colEl = iframe.closest('.deck-column');
+        if (!colEl) break;
+        const colId = colEl.dataset.id;
+        if (activeColumnId !== colId) {
+          activateColumn(colId);
+        } else {
+          resetIdleTimer();
+        }
+        break;
+      }
+    }
+  });
 
   // -----------------------------------------
   // Persistence (chrome.storage.local)
