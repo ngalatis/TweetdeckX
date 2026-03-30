@@ -200,8 +200,8 @@
       const style = document.createElement('style');
       style.id = id;
       style.textContent = `
-        /* Hide promoted tweets */
-        [data-testid="cellInnerDiv"]:has([data-testid="placementTracking"]) {
+        /* Hide promoted tweets (exclude cells containing video) */
+        [data-testid="cellInnerDiv"]:has([data-testid="placementTracking"]):not(:has(video, [data-testid="videoPlayer"], [data-testid="videoComponent"])) {
           display: none !important;
         }
 
