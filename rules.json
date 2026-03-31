@@ -191,7 +191,10 @@
   {
     "id": 7,
     "priority": 3,
-    "action": { "type": "block" },
+    "action": {
+      "type": "redirect",
+      "redirect": { "extensionPath": "/stub.json" }
+    },
     "condition": {
       "urlFilter": "error_log.json",
       "resourceTypes": ["xmlhttprequest"]
@@ -200,7 +203,10 @@
   {
     "id": 8,
     "priority": 3,
-    "action": { "type": "block" },
+    "action": {
+      "type": "redirect",
+      "redirect": { "extensionPath": "/stub.json" }
+    },
     "condition": {
       "urlFilter": "user_flow.json",
       "resourceTypes": ["xmlhttprequest"]
@@ -209,7 +215,10 @@
   {
     "id": 9,
     "priority": 3,
-    "action": { "type": "block" },
+    "action": {
+      "type": "redirect",
+      "redirect": { "extensionPath": "/stub.json" }
+    },
     "condition": {
       "urlFilter": "promoted_content/log.json",
       "resourceTypes": ["xmlhttprequest"]
@@ -218,7 +227,10 @@
   {
     "id": 10,
     "priority": 3,
-    "action": { "type": "block" },
+    "action": {
+      "type": "redirect",
+      "redirect": { "extensionPath": "/stub.json" }
+    },
     "condition": {
       "urlFilter": "dm/user_updates.json",
       "resourceTypes": ["xmlhttprequest"]
