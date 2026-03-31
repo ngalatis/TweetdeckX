@@ -25,10 +25,10 @@ The extension has four layers that work together to embed x.com inside iframes:
 - **Cookie bridge**: responds to `tweetdeckx-get-cookies` messages from content scripts with non-httpOnly `.x.com` cookies so iframes can inject them into `document.cookie`
 
 ### 2. Declarative Net Request Rules (`rules.json`)
-Static rules (IDs 1-8) that:
+Static rules (IDs 1-10) that:
 - Strip `x-frame-options` and `content-security-policy` headers from x.com/twitter.com/twimg.com responses (IDs 1-4) so they can be iframed
 - Spoof `Sec-Fetch-*` request headers on x.com sub_frame requests to look like top-level navigation (IDs 5-6) so X.com's server-side frame detection doesn't block the load
-- Block X.com telemetry endpoints `error_log.json` and `user_flow.json` (IDs 7-8) — these are analytics that eat rate limit budget for zero user benefit
+- Redirect X.com telemetry endpoints (`error_log.json`, `user_flow.json`, `promoted_content/log.json`, `dm/user_updates.json`) to a local `stub.json` (IDs 7-10) — these are analytics/polling that eat rate limit budget for zero user benefit. We redirect instead of block because hard-blocking causes `ERR_BLOCKED_BY_CLIENT` network errors that X.com's JS doesn't handle gracefully, breaking in-page navigation (e.g., profile tab switches).
 
 ### 3. Page Context Script (`page-context.js`) + Content Script (`content.js` + `content.css`)
 Two content scripts injected into x.com iframes at `document_start`:
@@ -69,7 +69,7 @@ Each X.com iframe independently polls multiple endpoints on `setInterval`:
 - `badge_count/badge_count.json` — notification badge (every ~10-15s per iframe)
 - `dm/user_updates.json` — DM polling (every ~10-15s per iframe)
 - `fleets/v1/avatar_content` — Spaces status
-- `error_log.json`, `user_flow.json` — telemetry (now blocked via rules.json)
+- `error_log.json`, `user_flow.json` — telemetry (now redirected to stub via rules.json)
 - `NotificationsTimeline` GraphQL — notification refreshes
 
 With N iframes, these multiply: 12 columns = ~72+ badge_count requests per minute, which quickly hits rate limits.
@@ -79,7 +79,7 @@ With N iframes, these multiply: 12 columns = ~72+ badge_count requests per minut
 2. **setInterval wrapper in `page-context.js`** — registered as a `world: "MAIN"` content script to bypass CSP. Wraps `setInterval`/`clearInterval` to support pause/resume via postMessage. This is how we freeze polling in hidden iframes.
 3. **Pause-all-by-default** — all columns are paused by default. A column resumes only when the user clicks into it or scrolls over it (becomes "active"), and auto-pauses after 45 seconds of no mouse activity over the column. Only one column can be active at a time. Managed by `activateColumn()` / `deactivateActiveColumn()` in deck.js.
 4. **5-minute lazy refresh** — visible paused columns get a brief resume-then-pause burst (~3 seconds) every 5 minutes so content stays reasonably fresh without constant polling.
-5. **Blocked telemetry & waste** — `error_log.json`, `user_flow.json`, `promoted_content/log.json`, and `dm/user_updates.json` are blocked via declarativeNetRequest rules (IDs 7-10).
+5. **Redirected telemetry & waste** — `error_log.json`, `user_flow.json`, `promoted_content/log.json`, and `dm/user_updates.json` are redirected to a local `stub.json` via declarativeNetRequest rules (IDs 7-10). We redirect instead of block because hard-blocking causes `ERR_BLOCKED_BY_CLIENT` errors that break X.com's in-page navigation (e.g., profile tab switches).
 6. **Randomized stagger** — cold loads use 1-2s random delays between columns to avoid burst patterns.
 7. **429 detection** — `background.js` monitors `webRequest.onCompleted` for 429 status codes and sends `tweetdeckx-rate-limited` message to deck.js, which shows a toast and pauses pending loads.
 8. **Debounced CSRF rule updates** — `updateCsrfRules()` is debounced with a 1-second delay to prevent 50+ redundant updates during iframe loading.
