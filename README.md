@@ -1,5 +1,8 @@
 # TweetDeckX — Multi-Column X Client
 
+> [!WARNING]
+> **Use this at your own risk.** TweetDeckX operates in a gray area of X's Terms of Service. If this project gains traction, X may actively work against it. Your account could be shadowbanned or suspended. I'm doing my best to work around any blockades, but nothing is guaranteed.
+
 A free, open-source Chrome extension that brings back the TweetDeck-style multi-column layout for X (formerly Twitter). TweetDeckX uses your existing logged-in X session — no extra authentication, no API keys, no third-party servers.
 
 ![TweetDeckX Preview](preview.png)
