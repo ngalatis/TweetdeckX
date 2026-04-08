@@ -1,0 +1,32 @@
+emojibase-data (English dataset)
+================================
+
+Upstream: https://github.com/milesj/emojibase
+NPM:      https://www.npmjs.com/package/emojibase-data
+License:  MIT (see LICENSE in this directory)
+Pinned version: 17.0.0
+
+Files vendored here:
+  compact.json    - from emojibase-data/en/compact.json
+  messages.json   - from emojibase-data/en/messages.json
+  LICENSE         - upstream repo's LICENSE file
+
+How to refresh this data
+------------------------
+
+1. Check the current version:
+     curl -s https://registry.npmjs.org/emojibase-data/latest \
+       | python3 -c "import sys,json; print(json.load(sys.stdin)['version'])"
+
+2. Download the new files (replace <V> with the version):
+     curl -fsSL "https://unpkg.com/emojibase-data@<V>/en/compact.json" \
+       -o vendor/emojibase/compact.json
+     curl -fsSL "https://unpkg.com/emojibase-data@<V>/en/messages.json" \
+       -o vendor/emojibase/messages.json
+     curl -fsSL "https://raw.githubusercontent.com/milesj/emojibase/v<V>/LICENSE" \
+       -o vendor/emojibase/LICENSE
+
+3. Update the "Pinned version" line in this file to <V>.
+
+4. Bump EMOJI_DATA_VERSION in deck.js (e.g. 'v1' -> 'v2') so users'
+   cached index is rebuilt on next deck open.

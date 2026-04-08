@@ -44,125 +44,180 @@
   };
 
   // -----------------------------------------
-  // Emoji pool
+  // Emoji data (see vendor/emojibase/SOURCE.txt)
   // -----------------------------------------
 
-  const EMOJI_POOL = [
-    { category: 'Smileys & Emotion', emojis: [
-      '😀','😃','😄','😁','😆','😅','🤣','😂','🙂','🙃','😉','😊','😇','🥰','😍','🤩',
-      '😘','😗','😚','😙','🥲','😋','😛','😜','🤪','😝','🤑','🤗','🤭','🤫','🤔','🫡',
-      '🤐','🤨','😐','😑','😶','🫥','😏','😒','🙄','😬','🤥','😌','😔','😪','🤤','😴',
-      '😷','🤒','🤕','🤢','🤮','🥵','🥶','🥴','😵','🤯','🤠','🥳','🥸','😎','🤓','🧐',
-      '😕','🫤','😟','🙁','😮','😯','😲','😳','🥺','🥹','😦','😧','😨','😰','😥','😢',
-      '😭','😱','😖','😣','😞','😓','😩','😫','🥱','😤','😡','😠','🤬','😈','👿','💀',
-      '☠️','💩','🤡','👹','👺','👻','👽','👾','🤖','😺','😸','😹','😻','😼','😽','🙀',
-      '😿','😾','🫶','❤️','🧡','💛','💚','💙','💜','🖤','🤍','🤎','💔','❣️','💕','💞',
-      '💓','💗','💖','💘','💝','💟',
-    ]},
-    { category: 'People & Gestures', emojis: [
-      '👋','🤚','🖐️','✋','🖖','🫱','🫲','🫳','🫴','👌','🤌','🤏','✌️','🤞','🫰','🤟',
-      '🤘','🤙','👈','👉','👆','🖕','👇','☝️','🫵','👍','👎','✊','👊','🤛','🤜','👏',
-      '🙌','🫶','👐','🤲','🤝','🙏','✍️','💅','🤳','💪','🦾','🦿','🦵','🦶','👂','🦻',
-      '👃','🧠','🫀','🫁','🦷','🦴','👀','👁️','👅','👄','👶','🧒','👦','👧','🧑','👱',
-      '👨','🧔','👩','🧓','👴','👵','🙍','🙎','🙅','🙆','💁','🙋','🧏','🙇','🤦','🤷',
-      '👮','🕵️','💂','🥷','👷','🫅','🤴','👸','👳','👲','🧕','🤵','👰','🤰','🫃','🫄',
-      '🤱','👼','🎅','🤶','🦸','🦹','🧙','🧚','🧛','🧜','🧝','🧞','🧟','💆','💇','🚶',
-      '🧍','🧎','🏃','💃','🕺','👯','🧖','🧗','🤸','⛹️','🏋️','🚴','🚵','🤼','🤽','🤾',
-      '🤺','🏇','⛷️','🏂','🏌️','🏄','🚣','🏊','🤽','🧘','👫','👬','👭','💏','💑','👪',
-    ]},
-    { category: 'Animals & Nature', emojis: [
-      '🐶','🐱','🐭','🐹','🐰','🦊','🐻','🐼','🐻‍❄️','🐨','🐯','🦁','🐮','🐷','🐸','🐵',
-      '🙈','🙉','🙊','🐒','🐔','🐧','🐦','🐤','🐣','🐥','🦆','🦅','🦉','🦇','🐺','🐗',
-      '🐴','🦄','🐝','🪱','🐛','🦋','🐌','🐞','🐜','🪰','🪲','🪳','🦟','🦗','🕷️','🦂',
-      '🐢','🐍','🦎','🦖','🦕','🐙','🦑','🦐','🦞','🦀','🐡','🐠','🐟','🐬','🐳','🐋',
-      '🦈','🐊','🐅','🐆','🦓','🦍','🦧','🐘','🦛','🦏','🐪','🐫','🦒','🦘','🦬','🐃',
-      '🐂','🐄','🐎','🐖','🐏','🐑','🦙','🐐','🦌','🐕','🐩','🦮','🐕‍🦺','🐈','🐈‍⬛','🪶',
-      '🐓','🦃','🦤','🦚','🦜','🦢','🦩','🕊️','🐇','🦝','🦨','🦡','🦫','🦦','🦥','🐁',
-      '🐀','🐿️','🦔','🐾','🐉','🐲','🌵','🎄','🌲','🌳','🌴','🪵','🌱','🌿','☘️','🍀',
-      '🎍','🪴','🎋','🍃','🍂','🍁','🪺','🪹','🍄','🌾','💐','🌷','🌹','🥀','🌺','🌸',
-      '🌼','🌻','🌞','🌝','🌛','🌜','🌚','🌕','🌖','🌗','🌘','🌑','🌒','🌓','🌔','🌙',
-      '🌎','🌍','🌏','🪐','💫','⭐','🌟','✨','⚡','☄️','💥','🔥','🌪️','🌈','☀️','🌤️',
-      '⛅','🌥️','☁️','🌦️','🌧️','⛈️','🌩️','🌨️','❄️','☃️','⛄','🌬️','💨','💧','💦','🫧',
-      '☔','☂️','🌊','🌫️',
-    ]},
-    { category: 'Food & Drink', emojis: [
-      '🍇','🍈','🍉','🍊','🍋','🍌','🍍','🥭','🍎','🍏','🍐','🍑','🍒','🍓','🫐','🥝',
-      '🍅','🫒','🥥','🥑','🍆','🥔','🥕','🌽','🌶️','🫑','🥒','🥬','🥦','🧄','🧅','🍄',
-      '🥜','🫘','🌰','🍞','🥐','🥖','🫓','🥨','🥯','🥞','🧇','🧀','🍖','🍗','🥩','🥓',
-      '🍔','🍟','🍕','🌭','🥪','🌮','🌯','🫔','🥙','🧆','🥚','🍳','🥘','🍲','🫕','🥣',
-      '🥗','🍿','🧈','🧂','🥫','🍱','🍘','🍙','🍚','🍛','🍜','🍝','🍠','🍢','🍣','🍤',
-      '🍥','🥮','🍡','🥟','🥠','🥡','🦀','🦞','🦐','🦑','🦪','🍦','🍧','🍨','🍩','🍪',
-      '🎂','🍰','🧁','🥧','🍫','🍬','🍭','🍮','🍯','🍼','🥛','☕','🫖','🍵','🍶','🍾',
-      '🍷','🍸','🍹','🍺','🍻','🥂','🥃','🫗','🥤','🧋','🧃','🧉','🧊',
-    ]},
-    { category: 'Activities & Sports', emojis: [
-      '⚽','🏀','🏈','⚾','🥎','🎾','🏐','🏉','🥏','🎱','🪀','🏓','🏸','🏒','🏑','🥍',
-      '🏏','🪃','🥅','⛳','🪁','🏹','🎣','🤿','🥊','🥋','🎽','🛹','🛼','🛷','⛸️','🥌',
-      '🎿','⛷️','🏂','🪂','🏋️','🤼','🤸','⛹️','🤺','🤾','🏌️','🏇','🧘','🏄','🏊','🤽',
-      '🚣','🧗','🚵','🚴','🏆','🥇','🥈','🥉','🏅','🎖️','🏵️','🎗️','🎫','🎟️','🎪','🤹',
-      '🎭','🩰','🎨','🎬','🎤','🎧','🎼','🎹','🥁','🪘','🎷','🎺','🪗','🎸','🪕','🎻',
-      '🎲','♟️','🎯','🎳','🎮','🕹️','🧩',
-    ]},
-    { category: 'Travel & Places', emojis: [
-      '🚗','🚕','🚙','🚌','🚎','🏎️','🚓','🚑','🚒','🚐','🛻','🚚','🚛','🚜','🏍️','🛵',
-      '🦽','🦼','🛺','🚲','🛴','🛹','🛼','🚏','🛣️','🛤️','🛞','⛽','🛞','🚨','🚥','🚦',
-      '🛑','🚧','⚓','🛟','⛵','🛶','🚤','🛳️','⛴️','🛥️','🚢','✈️','🛩️','🛫','🛬','🪂',
-      '💺','🚁','🚟','🚠','🚡','🛰️','🚀','🛸','🛎️','🧳','⏰','⌚','⏱️','⏲️','🕰️','🌡️',
-      '🗺️','🧭','🏔️','⛰️','🌋','🗻','🏕️','🏖️','🏜️','🏝️','🏞️','🏟️','🏛️','🏗️','🧱','🪨',
-      '🪵','🛖','🏘️','🏚️','🏠','🏡','🏢','🏣','🏤','🏥','🏦','🏨','🏩','🏪','🏫','🏬',
-      '🏭','🏯','🏰','💒','🗼','🗽','⛪','🕌','🛕','🕍','⛩️','🕋','⛲','⛺','🌁','🌃',
-      '🏙️','🌄','🌅','🌆','🌇','🌉','♨️','🎠','🛝','🎡','🎢','💈','🎪','🗾','🎑','🏞️',
-    ]},
-    { category: 'Objects', emojis: [
-      '⌚','📱','📲','💻','⌨️','🖥️','🖨️','🖱️','🖲️','🕹️','🗜️','💾','💿','📀','📼','📷',
-      '📸','📹','🎥','📽️','🎞️','📞','☎️','📠','📺','📻','🎙️','🎚️','🎛️','🧭','⏱️','⏲️',
-      '⏰','🕰️','⌛','⏳','📡','🔋','🪫','🔌','💡','🔦','🕯️','🪔','🧯','🛢️','💸','💵',
-      '💴','💶','💷','🪙','💰','💳','💎','⚖️','🪜','🧰','🪛','🔧','🔨','⚒️','🛠️','⛏️',
-      '🪚','🔩','⚙️','🪤','🧱','⛓️','🧲','🔫','💣','🧨','🪓','🔪','🗡️','⚔️','🛡️','🚬',
-      '⚰️','🪦','⚱️','🏺','🔮','📿','🧿','🪬','💈','⚗️','🔭','🔬','🕳️','🩹','🩺','🩻',
-      '🩼','💊','💉','🩸','🧬','🦠','🧫','🧪','🌡️','🧹','🪠','🧺','🧻','🚽','🚰','🚿',
-      '🛁','🛀','🧼','🪥','🪒','🧽','🪣','🧴','🛎️','🔑','🗝️','🚪','🪑','🛋️','🛏️','🛌',
-      '🧸','🪆','🖼️','🪞','🪟','🛍️','🛒','🎁','🎈','🎏','🎀','🪄','🪅','🎊','🎉','🎎',
-      '🏮','🎐','🧧','✉️','📩','📨','📧','💌','📥','📤','📦','🏷️','🪧','📪','📫','📬',
-      '📭','📮','📯','📜','📃','📄','📑','🧾','📊','📈','📉','🗒️','🗓️','📆','📅','🗑️',
-      '📇','🗃️','🗳️','🗄️','📋','📁','📂','🗂️','🗞️','📰','📓','📔','📒','📕','📗','📘',
-      '📙','📚','📖','🔖','🧷','🔗','📎','🖇️','📐','📏','🧮','📌','📍','✂️','🖊️','🖋️',
-      '✒️','🖌️','🖍️','📝','✏️','🔍','🔎','🔏','🔐','🔒','🔓',
-    ]},
-    { category: 'Symbols', emojis: [
-      '💬','👁️‍🗨️','🗨️','🗯️','💭','♠️','♣️','♥️','♦️','🃏','🎴','🀄','🔇','🔈','🔉','🔊',
-      '📢','📣','📯','🔔','🔕','🎵','🎶','💹','🏧','🚮','🚰','♿','🚹','🚺','🚻','🚼',
-      '🚾','🛂','🛃','🛄','🛅','⚠️','🚸','⛔','🚫','🚳','🚭','🚯','🚱','🚷','📵','🔞',
-      '☢️','☣️','⬆️','↗️','➡️','↘️','⬇️','↙️','⬅️','↖️','↕️','↔️','↩️','↪️','⤴️','⤵️',
-      '🔃','🔄','🔙','🔚','🔛','🔜','🔝','🛐','⚛️','🕉️','✡️','☸️','☯️','✝️','☦️','☪️',
-      '☮️','🕎','🔯','♈','♉','♊','♋','♌','♍','♎','♏','♐','♑','♒','♓','⛎',
-      '🔀','🔁','🔂','▶️','⏩','⏭️','⏯️','◀️','⏪','⏮️','🔼','⏫','🔽','⏬','⏸️','⏹️',
-      '⏺️','⏏️','🎦','🔅','🔆','📶','📳','📴','♀️','♂️','⚧️','✖️','➕','➖','➗','🟰',
-      '♾️','‼️','⁉️','❓','❔','❕','❗','〰️','💱','💲','⚕️','♻️','⚜️','🔱','📛','🔰',
-      '⭕','✅','☑️','✔️','❌','❎','➰','➿','〽️','✳️','✴️','❇️','©️','®️','™️','#️⃣',
-      '*️⃣','0️⃣','1️⃣','2️⃣','3️⃣','4️⃣','5️⃣','6️⃣','7️⃣','8️⃣','9️⃣','🔟','🔠','🔡','🔢','🔣',
-      '🔤','🅰️','🆎','🅱️','🆑','🆒','🆓','ℹ️','🆔','Ⓜ️','🆕','🆖','🅾️','🆗','🅿️','🆘',
-      '🆙','🆚','🈁','🈂️','🈷️','🈶','🈯','🉐','🈹','🈚','🈲','🉑','🈸','🈴','🈳','㊗️',
-      '㊙️','🈺','🈵','🔴','🟠','🟡','🟢','🔵','🟣','🟤','⚫','⚪','🟥','🟧','🟨','🟩',
-      '🟦','🟪','🟫','⬛','⬜','◼️','◻️','◾','◽','▪️','▫️','🔶','🔷','🔸','🔹','🔺',
-      '🔻','💠','🔘','🔳','🔲',
-    ]},
-    { category: 'Flags', emojis: [
-      '🏁','🚩','🎌','🏴','🏳️','🏳️‍🌈','🏳️‍⚧️','🏴‍☠️','🇺🇸','🇬🇧','🇨🇦','🇦🇺','🇩🇪','🇫🇷','🇯🇵','🇰🇷',
-      '🇨🇳','🇮🇳','🇧🇷','🇲🇽','🇪🇸','🇮🇹','🇷🇺','🇳🇱','🇸🇪','🇳🇴','🇩🇰','🇫🇮','🇨🇭','🇦🇹','🇧🇪','🇵🇹',
-      '🇬🇷','🇹🇷','🇵🇱','🇮🇪','🇿🇦','🇪🇬','🇳🇬','🇰🇪','🇦🇷','🇨🇴','🇨🇱','🇵🇪','🇻🇪','🇪🇨','🇺🇾','🇵🇾',
-      '🇹🇭','🇻🇳','🇮🇩','🇵🇭','🇲🇾','🇸🇬','🇹🇼','🇭🇰','🇮🇱','🇸🇦','🇦🇪','🇶🇦','🇰🇼','🇵🇰','🇧🇩','🇱🇰',
-      '🇳🇿','🇺🇦','🇷🇴','🇭🇺','🇨🇿','🇸🇰','🇭🇷','🇷🇸','🇧🇬','🇱🇹','🇱🇻','🇪🇪',
-    ]},
+  // Bumping this invalidates the cached derived index on next deck open.
+  // Bump whenever vendor/emojibase/compact.json is refreshed.
+  const EMOJI_DATA_VERSION = 'v1';
+  const EMOJI_CACHE_KEY = `tweetdeckx_emoji_cache_${EMOJI_DATA_VERSION}`;
+
+  // Tiny fallback pool used only when:
+  //   (a) the real data hasn't finished loading yet during deck boot, or
+  //   (b) the fetch of compact.json failed for some reason.
+  // Must stay small and self-contained.
+  const FALLBACK_EMOJI_POOL = [
+    '🏠','⭐','🔥','💡','📌','📝','🎯','🚀',
+    '💬','❤️','👍','🎉','🌟','📊','🔔','☕',
+    '🎨','🧠','💼','📚',
   ];
-  const ALL_EMOJIS = EMOJI_POOL.flatMap(c => c.emojis);
+
+  // Loaded asynchronously by loadEmojiData() in init().
+  // Shape when loaded: { categories: [...], searchIndex: [...] }
+  let emojiData = null;
+  let emojiDataPromise = null;
+
+  // Title-case a string for display. messages.json in emojibase v17 uses
+  // lowercase group labels ("smileys & emotion"); the old picker used
+  // title case, so match the existing aesthetic.
+  function titleCaseLabel(s) {
+    return String(s || '').replace(/\w\S*/g, t => t.charAt(0).toUpperCase() + t.slice(1));
+  }
+
+  // Build the derived { categories, searchIndex } structures from the
+  // raw compact.json + messages.json payloads.
+  //
+  // compact.json entry shape in emojibase v17:
+  //   { hexcode, label, unicode, group?, order?, tags?, skins?, emoticon? }
+  // Note: `group`/`order`/`tags` are absent on ~26 regional-indicator
+  // entries (standalone A-Z letters used to compose country flags) -
+  // we filter those out by requiring a numeric `group`.
+  //
+  // messages.json groups shape in emojibase v17:
+  //   { key: 'smileys-emotion', message: 'smileys & emotion', order: 0 }
+  // The `order` field is the group number that compact.json entries reference.
+  function buildEmojiIndex(compact, messages) {
+    // Map group number -> human label using messages.json.
+    const groupLabels = {};
+    for (const g of messages.groups) {
+      groupLabels[g.order] = titleCaseLabel(g.message);
+    }
+
+    // Bucket emojis by group, excluding group 2 ('components' - skin tones
+    // and hair components, not pickable on their own).
+    const EXCLUDED_GROUP = 2;
+    const buckets = {}; // group number -> array of entries
+    const searchIndex = [];
+
+    for (const entry of compact) {
+      if (typeof entry.group !== 'number') continue; // skips regional indicators
+      if (entry.group === EXCLUDED_GROUP) continue;
+
+      (buckets[entry.group] = buckets[entry.group] || []).push(entry);
+
+      // Build the search index entry. Lowercase everything once so
+      // search doesn't re-lowercase on every keystroke.
+      const tags = Array.isArray(entry.tags) ? entry.tags.map(t => String(t).toLowerCase()) : [];
+      searchIndex.push({
+        unicode: entry.unicode,
+        label: String(entry.label || '').toLowerCase(),
+        tags,
+      });
+    }
+
+    // Sort each bucket by `order` so the picker displays emojis in the
+    // official CLDR sort order.
+    const categories = [];
+    const sortedGroupIds = Object.keys(buckets).map(Number).sort((a, b) => a - b);
+    for (const gid of sortedGroupIds) {
+      const entries = buckets[gid].slice().sort((a, b) => (a.order || 0) - (b.order || 0));
+      categories.push({
+        id: gid,
+        label: groupLabels[gid] || `Group ${gid}`,
+        emojis: entries.map(e => e.unicode),
+      });
+    }
+
+    return { categories, searchIndex };
+  }
+
+  // Read the derived index from chrome.storage.local if present and
+  // version-matching, otherwise return null.
+  function readEmojiCache() {
+    return new Promise((resolve) => {
+      chrome.storage.local.get([EMOJI_CACHE_KEY], (data) => {
+        const cached = data[EMOJI_CACHE_KEY];
+        if (cached && cached.version === EMOJI_DATA_VERSION
+            && Array.isArray(cached.categories) && Array.isArray(cached.searchIndex)) {
+          resolve(cached);
+        } else {
+          resolve(null);
+        }
+      });
+    });
+  }
+
+  function writeEmojiCache(data) {
+    chrome.storage.local.set({
+      [EMOJI_CACHE_KEY]: {
+        version: EMOJI_DATA_VERSION,
+        categories: data.categories,
+        searchIndex: data.searchIndex,
+      },
+    });
+  }
+
+  // Load the emoji dataset. Runs at most once per deck session.
+  // Returns a promise that resolves once `emojiData` is populated
+  // (either from cache or from the vendored JSON files). If the
+  // fetch fails, `emojiData` stays null and the picker falls back
+  // to FALLBACK_EMOJI_POOL.
+  function loadEmojiData() {
+    if (emojiData) return Promise.resolve(emojiData);
+    if (emojiDataPromise) return emojiDataPromise;
+
+    emojiDataPromise = (async () => {
+      // 1. Try cache first.
+      try {
+        const cached = await readEmojiCache();
+        if (cached) {
+          emojiData = { categories: cached.categories, searchIndex: cached.searchIndex };
+          return emojiData;
+        }
+      } catch (err) {
+        console.warn('[TweetDeckX] emoji cache read failed:', err);
+      }
+
+      // 2. Cache miss - fetch the vendored files.
+      try {
+        const [compactResp, messagesResp] = await Promise.all([
+          fetch('vendor/emojibase/compact.json'),
+          fetch('vendor/emojibase/messages.json'),
+        ]);
+        if (!compactResp.ok || !messagesResp.ok) {
+          throw new Error(`fetch failed: compact=${compactResp.status} messages=${messagesResp.status}`);
+        }
+        const [compact, messages] = await Promise.all([
+          compactResp.json(),
+          messagesResp.json(),
+        ]);
+        const built = buildEmojiIndex(compact, messages);
+        emojiData = built;
+        writeEmojiCache(built);
+        return emojiData;
+      } catch (err) {
+        console.warn('[TweetDeckX] emoji data load failed, using fallback pool:', err);
+        emojiData = null; // explicit: picker will fall back
+        return null;
+      }
+    })();
+
+    return emojiDataPromise;
+  }
 
   // -----------------------------------------
   // Utility functions
   // -----------------------------------------
 
   function randomEmoji() {
-    return ALL_EMOJIS[Math.floor(Math.random() * ALL_EMOJIS.length)];
+    if (emojiData && emojiData.searchIndex && emojiData.searchIndex.length) {
+      const idx = Math.floor(Math.random() * emojiData.searchIndex.length);
+      return emojiData.searchIndex[idx].unicode;
+    }
+    if (FALLBACK_EMOJI_POOL.length) {
+      return FALLBACK_EMOJI_POOL[Math.floor(Math.random() * FALLBACK_EMOJI_POOL.length)];
+    }
+    return '🏠';
   }
 
   function generateId(prefix) {
@@ -1254,7 +1309,7 @@
   }
 
   function buildEmojiPicker() {
-    emojiPicker.innerHTML = '';
+    emojiPicker.replaceChildren();
 
     const searchInput = document.createElement('input');
     searchInput.className = 'emoji-picker-search';
@@ -1265,43 +1320,120 @@
     const contentWrapper = document.createElement('div');
     emojiPicker.appendChild(contentWrapper);
 
-    function renderEmojis(filter) {
-      contentWrapper.innerHTML = '';
-      const q = (filter || '').toLowerCase();
+    function makeEmojiButton(emoji) {
+      const btn = document.createElement('button');
+      btn.className = 'emoji-pick' + (emoji === selectedEmoji ? ' selected' : '');
+      btn.textContent = emoji;
+      btn.addEventListener('click', () => {
+        selectedEmoji = emoji;
+        pageEmojiBtn.textContent = emoji;
+        emojiPicker.querySelectorAll('.emoji-pick').forEach(b => b.classList.remove('selected'));
+        btn.classList.add('selected');
+        emojiPicker.classList.add('hidden');
+        pageEmojiBtn.classList.remove('active');
+      });
+      return btn;
+    }
 
-      EMOJI_POOL.forEach((cat) => {
-        const filtered = q ? cat.emojis.filter(() => cat.category.toLowerCase().includes(q)) : cat.emojis;
-        if (filtered.length === 0) return;
+    function renderCategorized() {
+      contentWrapper.replaceChildren();
+
+      // If the full data isn't available (load failed), render the
+      // fallback pool as a single flat grid so the picker stays usable.
+      if (!emojiData) {
+        const grid = document.createElement('div');
+        grid.className = 'emoji-picker-grid';
+        FALLBACK_EMOJI_POOL.forEach(e => grid.appendChild(makeEmojiButton(e)));
+        contentWrapper.appendChild(grid);
+        return;
+      }
+
+      emojiData.categories.forEach((cat) => {
+        if (!cat.emojis.length) return;
 
         const label = document.createElement('div');
         label.className = 'emoji-picker-category';
-        label.textContent = cat.category;
+        label.textContent = cat.label;
         contentWrapper.appendChild(label);
 
         const grid = document.createElement('div');
         grid.className = 'emoji-picker-grid';
-
-        filtered.forEach((emoji) => {
-          const btn = document.createElement('button');
-          btn.className = 'emoji-pick' + (emoji === selectedEmoji ? ' selected' : '');
-          btn.textContent = emoji;
-          btn.addEventListener('click', () => {
-            selectedEmoji = emoji;
-            pageEmojiBtn.textContent = emoji;
-            emojiPicker.querySelectorAll('.emoji-pick').forEach(b => b.classList.remove('selected'));
-            btn.classList.add('selected');
-            emojiPicker.classList.add('hidden');
-            pageEmojiBtn.classList.remove('active');
-          });
-          grid.appendChild(btn);
-        });
-
+        cat.emojis.forEach(e => grid.appendChild(makeEmojiButton(e)));
         contentWrapper.appendChild(grid);
       });
     }
 
-    searchInput.addEventListener('input', () => renderEmojis(searchInput.value));
-    renderEmojis('');
+    function renderSearchResults(q) {
+      contentWrapper.replaceChildren();
+
+      // Without a loaded searchIndex we can't meaningfully filter.
+      // Fall back to showing the fallback pool unchanged.
+      if (!emojiData) {
+        renderCategorized();
+        return;
+      }
+
+      const matches = [];
+      for (const entry of emojiData.searchIndex) {
+        if (entry.label.includes(q) || entry.tags.some(t => t.includes(q))) {
+          matches.push(entry.unicode);
+        }
+      }
+
+      const label = document.createElement('div');
+      label.className = 'emoji-picker-category';
+      label.textContent = 'Results';
+      contentWrapper.appendChild(label);
+
+      if (matches.length === 0) {
+        const empty = document.createElement('div');
+        empty.className = 'emoji-picker-empty';
+        empty.textContent = `No emojis match "${q}"`;
+        contentWrapper.appendChild(empty);
+        return;
+      }
+
+      const grid = document.createElement('div');
+      grid.className = 'emoji-picker-grid';
+      matches.forEach(e => grid.appendChild(makeEmojiButton(e)));
+      contentWrapper.appendChild(grid);
+    }
+
+    function render(filter) {
+      // While the data is still loading, keep the Loading placeholder in
+      // place regardless of what's in the search box. The .then() handler
+      // at the bottom of buildEmojiPicker will call render() again once
+      // the promise resolves, at which point emojiData will be set and
+      // the user's current search text (if any) will be applied.
+      if (!emojiData && emojiDataPromise) return;
+      const q = (filter || '').trim().toLowerCase();
+      if (q) {
+        renderSearchResults(q);
+      } else {
+        renderCategorized();
+      }
+    }
+
+    // If data is still loading, show a placeholder and re-render once
+    // it resolves. The re-render is guarded by checking that this
+    // contentWrapper is still attached to the picker, so it's safe even
+    // if the user closed and reopened the picker in the meantime.
+    if (!emojiData && emojiDataPromise) {
+      const loading = document.createElement('div');
+      loading.className = 'emoji-picker-empty';
+      loading.textContent = 'Loading emojis…';
+      contentWrapper.appendChild(loading);
+
+      emojiDataPromise.then(() => {
+        if (contentWrapper.parentNode === emojiPicker) {
+          render(searchInput.value);
+        }
+      });
+    } else {
+      render('');
+    }
+
+    searchInput.addEventListener('input', () => render(searchInput.value));
   }
 
   // Emoji button toggle
@@ -1657,6 +1789,11 @@
 
   async function init() {
     await loadState();
+
+    // Kick off emoji data load in the background. Do NOT await - this
+    // must not block first paint. The picker will show a Loading
+    // placeholder if the user opens it before this completes.
+    loadEmojiData();
 
     // Remove old storage keys from pre-pages era
     chrome.storage.local.remove(['tweetdeckx_columns', 'tweetdeckx_settings']);
