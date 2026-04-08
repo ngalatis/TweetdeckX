@@ -781,6 +781,13 @@ html, body {
   text-transform: uppercase;
   letter-spacing: 0.5px;
 }
+.emoji-picker-empty {
+  padding: 16px 12px;
+  color: var(--text-muted, #8b98a5);
+  font-size: 13px;
+  text-align: center;
+  font-style: italic;
+}
 .emoji-picker-category:first-child { margin-top: 0; }
 .emoji-picker-grid {
   display: flex;
