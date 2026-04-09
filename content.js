@@ -241,9 +241,12 @@
       style.id = id;
       style.textContent = `
         /* Hide X.com's in-iframe app bar (profile header, tweet-detail header, etc.).
-           Identified as the direct child of primaryColumn that contains the
-           built-in back button. Uses :has() which is supported in Chrome 105+. */
-        [data-testid="primaryColumn"] > div:has([data-testid="app-bar-back"]) {
+           X.com wraps the whole column in a sticky wrapper (direct child of
+           primaryColumn), and the actual header bar sits one level below that
+           wrapper. We target the grandchild that contains the app-bar-back
+           button so we hide the ~53px header without nuking the tweet list.
+           Uses :has() which is supported in Chrome 105+. */
+        [data-testid="primaryColumn"] > div > div:has([data-testid="app-bar-back"]) {
           display: none !important;
         }
       `;
