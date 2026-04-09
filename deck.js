@@ -230,6 +230,14 @@
     return div.innerHTML;
   }
 
+  // Parses an SVG source string into a detached Element. Used when we want to
+  // inject a trusted static icon into a DOM tree built with createElement,
+  // without touching the element's inner markup via string APIs.
+  function svgFromString(svgSource) {
+    const doc = new DOMParser().parseFromString(svgSource, 'image/svg+xml');
+    return document.importNode(doc.documentElement, true);
+  }
+
   function applyTheme() {
     document.documentElement.setAttribute('data-theme', state.settings.theme);
   }
@@ -315,6 +323,31 @@
   let activeColumnId = null;       // which column is currently Active (resumed)
   let idleTimer = null;            // timer to pause the active column after inactivity
   let refreshTimers = new Map();   // Map<columnId, timerId> for 5-min lazy refresh
+
+  // Per-column runtime state that is NOT persisted. Populated as iframes
+  // report their current URL via the 'tweetdeckx-url-changed' message and
+  // cleared in removeColumn (but intentionally NOT in moveColumn — the
+  // column still exists after a move, just on a different page). Survives
+  // page switches because hidden pages keep their iframes in the DOM via
+  // display: none.
+  const colRuntimeState = new Map(); // Map<colId, { currentUrl: string }>
+
+  function updateBackButtonVisibility(colId) {
+    const colEl = columnsContainer.querySelector(`.page-wrapper .deck-column[data-id="${colId}"]`);
+    if (!colEl) return;
+    const backBtn = colEl.querySelector('.col-back');
+    if (!backBtn) return; // header hasn't been rewritten yet (Task 3 adds this element)
+
+    const page = state.pages.find(p => p.columns.some(c => c.id === colId));
+    if (!page) return;
+    const col = page.columns.find(c => c.id === colId);
+    if (!col) return;
+
+    const rs = colRuntimeState.get(colId);
+    const currentUrl = rs && rs.currentUrl;
+    const show = currentUrl && !urlsEquivalent(currentUrl, getCanonicalUrl(col));
+    backBtn.style.display = show ? '' : 'none';
+  }
 
   const IDLE_TIMEOUT = 45000;      // 45 seconds of no mouse activity → pause
   const REFRESH_INTERVAL = 300000; // 5 minutes between lazy refreshes
@@ -558,6 +591,24 @@
     }
   });
 
+  // Receive iframe URL change reports. Find the column by matching the
+  // message source against live iframes, update runtime state, and refresh
+  // the back-button visibility for that column.
+  window.addEventListener('message', (e) => {
+    if (!e.data || e.data.type !== 'tweetdeckx-url-changed') return;
+    const iframes = columnsContainer.querySelectorAll('iframe');
+    for (const iframe of iframes) {
+      if (iframe.contentWindow === e.source) {
+        const colEl = iframe.closest('.deck-column');
+        if (!colEl) break;
+        const colId = colEl.dataset.id;
+        colRuntimeState.set(colId, { currentUrl: e.data.url });
+        updateBackButtonVisibility(colId);
+        break;
+      }
+    }
+  });
+
   // -----------------------------------------
   // Lightbox: expand iframe to full viewport
   // -----------------------------------------
@@ -668,6 +719,31 @@
         return param.startsWith('http') ? param : `https://x.com/${param}`;
       default:
         return 'https://x.com/home';
+    }
+  }
+
+  // Returns the URL a column "should" currently show. If the user has used
+  // "Save current view" to persist a specific URL on this column, that wins;
+  // otherwise we derive it from the column type and param.
+  function getCanonicalUrl(col) {
+    return col.url || getColumnUrl(col.type, col.param);
+  }
+
+  // Returns true if two URLs are semantically equivalent for the purpose of
+  // deciding whether the column has navigated away from its canonical URL.
+  // Ignores hash and trailing-slash differences; compares sorted search params.
+  function urlsEquivalent(a, b) {
+    if (!a || !b) return false;
+    try {
+      const ua = new URL(a);
+      const ub = new URL(b);
+      if (ua.origin !== ub.origin) return false;
+      if (ua.pathname.replace(/\/$/, '') !== ub.pathname.replace(/\/$/, '')) return false;
+      const sa = [...ua.searchParams].sort().map(p => p.join('=')).join('&');
+      const sb = [...ub.searchParams].sort().map(p => p.join('=')).join('&');
+      return sa === sb;
+    } catch (e) {
+      return a === b;
     }
   }
 
@@ -1068,6 +1144,7 @@
     const page = getActivePage();
     if (!page) return;
     page.columns = page.columns.filter(c => c.id !== colId);
+    colRuntimeState.delete(colId);
     saveState();
 
     // Clean up timers for this column
