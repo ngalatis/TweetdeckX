@@ -251,7 +251,7 @@
   let state = {
     pages: [],
     activePageId: null,
-    settings: { columnWidth: 420, theme: 'dark', hideAds: false },
+    settings: { columnWidth: 420, theme: 'dark', hideAds: false, hideColumnHeader: false },
   };
 
   // -----------------------------------------
@@ -529,6 +529,7 @@
   const colWidthValue = document.getElementById('col-width-value');
   const themeSelect = document.getElementById('theme-select');
   const hideAdsToggle = document.getElementById('hide-ads-toggle');
+  const hideColHeaderToggle = document.getElementById('hide-col-header-toggle');
 
   // Column activation is now handled per-column by attachColumnInteractionListeners()
 
@@ -1003,7 +1004,11 @@
 
     iframe.addEventListener('load', () => {
       try {
-        iframe.contentWindow.postMessage({ type: 'tweetdeckx-init', hideAds: state.settings.hideAds }, '*');
+        iframe.contentWindow.postMessage({
+          type: 'tweetdeckx-init',
+          hideAds: state.settings.hideAds,
+          hideColumnHeader: state.settings.hideColumnHeader && col.type !== 'search',
+        }, '*');
         iframe.contentWindow.postMessage({
           type: 'tweetdeckx-set-column-width',
           width: state.settings.columnWidth
@@ -1030,6 +1035,28 @@
         iframe.contentWindow.postMessage({
           type: 'tweetdeckx-set-hide-ads',
           enabled: state.settings.hideAds,
+        }, '*');
+      } catch (e) { /* Cross-origin — content script handles it */ }
+    });
+  }
+
+  function broadcastHideColumnHeader() {
+    document.querySelectorAll('.deck-column').forEach(colEl => {
+      const colId = colEl.dataset.id;
+      // Resolve the column's type from any page (not just active — cached
+      // pages have live iframes too via display:none).
+      let colType = null;
+      for (const p of state.pages) {
+        const found = p.columns.find(c => c.id === colId);
+        if (found) { colType = found.type; break; }
+      }
+      const effective = state.settings.hideColumnHeader && colType !== 'search';
+      const iframe = colEl.querySelector('iframe');
+      if (!iframe) return;
+      try {
+        iframe.contentWindow.postMessage({
+          type: 'tweetdeckx-set-hide-column-header',
+          enabled: effective,
         }, '*');
       } catch (e) { /* Cross-origin — content script handles it */ }
     });
@@ -1979,6 +2006,7 @@
     colWidthValue.textContent = state.settings.columnWidth + 'px';
     themeSelect.value = state.settings.theme;
     hideAdsToggle.checked = state.settings.hideAds;
+    hideColHeaderToggle.checked = state.settings.hideColumnHeader;
     settingsOverlay.classList.remove('hidden');
   });
 
@@ -2012,6 +2040,12 @@
     state.settings.hideAds = hideAdsToggle.checked;
     saveState();
     broadcastHideAds();
+  });
+
+  hideColHeaderToggle.addEventListener('change', () => {
+    state.settings.hideColumnHeader = hideColHeaderToggle.checked;
+    saveState();
+    broadcastHideColumnHeader();
   });
 
   document.getElementById('btn-reset-pages').addEventListener('click', () => {
