@@ -2052,6 +2052,7 @@
     if (confirm('Reset all pages? This will remove all pages and columns and cannot be undone.')) {
       deactivateActiveColumn();
       clearAllCache();
+      colRuntimeState.clear();
       const defaultPage = {
         id: generateId('page'),
         name: 'Home',
