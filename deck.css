@@ -906,6 +906,66 @@ html, body {
   margin: 4px 2px;
 }
 
+.col-menu-section-label {
+  padding: 8px 10px 4px;
+  font-size: 11px;
+  color: var(--text-muted);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.col-menu-input {
+  width: calc(100% - 12px);
+  margin: 0 6px;
+  padding: 8px 10px;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  font-size: 13px;
+  font-family: inherit;
+  box-sizing: border-box;
+}
+
+.col-menu-input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.col-menu-actions {
+  display: flex;
+  gap: 6px;
+  justify-content: flex-end;
+  padding: 8px 6px 4px;
+}
+
+.col-menu-action {
+  padding: 6px 12px;
+  background: none;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.col-menu-action:hover {
+  background: var(--bg-surface-hover);
+  color: var(--text-primary);
+}
+
+.col-menu-action-primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.col-menu-action-primary:hover {
+  opacity: 0.9;
+}
+
 /* =========================================
    Add Column Buttons
    ========================================= */

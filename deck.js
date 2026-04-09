@@ -1337,6 +1337,8 @@
         renderRoot();
       } else if (menuView === 'move') {
         renderMove();
+      } else if (menuView === 'rename') {
+        renderRename();
       }
     }
 
@@ -1360,6 +1362,16 @@
         saveCurrentView(colId);
       });
       menu.appendChild(saveItem);
+
+      menu.appendChild(makeMenuDivider());
+
+      // Rename
+      const renameItem = makeMenuItem({ icon: '✏️', label: 'Rename column' });
+      renameItem.addEventListener('click', () => {
+        menuView = 'rename';
+        render();
+      });
+      menu.appendChild(renameItem);
 
       menu.appendChild(makeMenuDivider());
 
@@ -1401,6 +1413,69 @@
           moveColumn(colId, page.id);
         });
         menu.appendChild(item);
+      });
+    }
+
+    function renderRename() {
+      const page = getActivePage();
+      if (!page) return;
+      const col = page.columns.find(c => c.id === colId);
+      if (!col) return;
+
+      const backRow = makeMenuItem({ icon: '‹', label: 'Back' });
+      backRow.classList.add('col-menu-back');
+      backRow.addEventListener('click', () => {
+        menuView = 'root';
+        render();
+      });
+      menu.appendChild(backRow);
+      menu.appendChild(makeMenuDivider());
+
+      const label = document.createElement('div');
+      label.className = 'col-menu-section-label';
+      label.textContent = 'Column title';
+      menu.appendChild(label);
+
+      const input = document.createElement('input');
+      input.className = 'col-menu-input';
+      input.type = 'text';
+      input.value = col.title || getColumnTitle(col.type, col.param);
+      input.placeholder = 'Column title';
+      menu.appendChild(input);
+
+      const actions = document.createElement('div');
+      actions.className = 'col-menu-actions';
+
+      const cancelBtn = document.createElement('button');
+      cancelBtn.className = 'col-menu-action';
+      cancelBtn.textContent = 'Cancel';
+      cancelBtn.addEventListener('click', () => {
+        menu.remove();
+      });
+      actions.appendChild(cancelBtn);
+
+      const saveBtn = document.createElement('button');
+      saveBtn.className = 'col-menu-action col-menu-action-primary';
+      saveBtn.textContent = 'Save';
+      saveBtn.addEventListener('click', () => {
+        renameColumn(colId, input.value);
+        menu.remove();
+      });
+      actions.appendChild(saveBtn);
+
+      menu.appendChild(actions);
+
+      // Focus + commit on Enter / cancel on Escape
+      setTimeout(() => input.focus(), 0);
+      input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          renameColumn(colId, input.value);
+          menu.remove();
+        } else if (e.key === 'Escape') {
+          e.preventDefault();
+          menu.remove();
+        }
       });
     }
 
@@ -1484,6 +1559,26 @@
     col.url = currentUrl;
     saveState();
     updateBackButtonVisibility(colId);
+  }
+
+  function renameColumn(colId, newTitle) {
+    const page = state.pages.find(p => p.columns.some(c => c.id === colId));
+    if (!page) return;
+    const col = page.columns.find(c => c.id === colId);
+    if (!col) return;
+
+    const trimmed = (newTitle || '').trim();
+    col.title = trimmed || null;
+    saveState();
+
+    // Update the column title DOM in place (no full re-render, no iframe reload)
+    const colEl = columnsContainer.querySelector(`.deck-column[data-id="${colId}"]`);
+    if (colEl) {
+      const titleEl = colEl.querySelector('.column-title');
+      if (titleEl) {
+        titleEl.textContent = col.title || getColumnTitle(col.type, col.param);
+      }
+    }
   }
 
   // -----------------------------------------
