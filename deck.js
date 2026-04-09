@@ -1390,8 +1390,14 @@
     render();
     colEl.appendChild(menu);
 
-    // Dismiss on outside click
+    // Dismiss on outside click. The isConnected guard self-cleans the handler
+    // if the menu was removed by some other path (toggle-off via re-click,
+    // closeAllDropdowns, removeColumn from a menu item, etc.).
     const dismissHandler = (e) => {
+      if (!menu.isConnected) {
+        document.removeEventListener('click', dismissHandler, true);
+        return;
+      }
       if (!menu.contains(e.target) && !e.target.closest('[data-action="menu"]')) {
         menu.remove();
         document.removeEventListener('click', dismissHandler, true);
