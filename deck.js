@@ -1346,6 +1346,23 @@
       const col = page.columns.find(c => c.id === colId);
       if (!col) return;
 
+      // Save current view
+      const rs = colRuntimeState.get(colId);
+      const currentUrl = rs && rs.currentUrl;
+      const canSave = !!(currentUrl && !urlsEquivalent(currentUrl, getCanonicalUrl(col)));
+
+      const saveItem = makeMenuItem({ icon: '💾', label: 'Save current view' });
+      saveItem.disabled = !canSave;
+      saveItem.title = canSave ? 'Save this URL as the column default' : 'Already on saved view';
+      saveItem.addEventListener('click', () => {
+        if (!canSave) return;
+        menu.remove();
+        saveCurrentView(colId);
+      });
+      menu.appendChild(saveItem);
+
+      menu.appendChild(makeMenuDivider());
+
       // Move to page… (only when there are multiple pages)
       if (state.pages.length > 1) {
         const moveItem = makeMenuItem({ icon: '📂', label: 'Move to page…', chevron: '›' });
@@ -1451,6 +1468,22 @@
     if (sourcePage.columns.length === 0) {
       renderColumns();
     }
+  }
+
+  function saveCurrentView(colId) {
+    const page = state.pages.find(p => p.columns.some(c => c.id === colId));
+    if (!page) return;
+    const col = page.columns.find(c => c.id === colId);
+    if (!col) return;
+
+    const rs = colRuntimeState.get(colId);
+    const currentUrl = rs && rs.currentUrl;
+    if (!currentUrl) return;
+    if (urlsEquivalent(currentUrl, getCanonicalUrl(col))) return;
+
+    col.url = currentUrl;
+    saveState();
+    updateBackButtonVisibility(colId);
   }
 
   // -----------------------------------------
