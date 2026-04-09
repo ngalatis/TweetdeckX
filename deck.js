@@ -41,6 +41,7 @@
     close:    '<svg width="14" height="14" viewBox="0 0 24 24" fill="none"><line x1="18" y1="6" x2="6" y2="18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><line x1="6" y1="6" x2="18" y2="18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>',
     move:     '<svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M5 12h14M12 5l7 7-7 7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>',
     back:     '<svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M19 12H5M12 19l-7-7 7-7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+    menu:     '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg>',
   };
 
   // -----------------------------------------
@@ -890,63 +891,97 @@
     colEl.style.width = state.settings.columnWidth + 'px';
 
     const typeDef = COLUMN_TYPES[col.type] || COLUMN_TYPES.home;
-    const iconSvg = ICONS[typeDef.icon] || ICONS.home;
 
-    const moveBtn = state.pages.length > 1
-      ? `<button class="col-btn" data-action="move" title="Move to another page">${ICONS.move}</button>`
-      : '';
+    // ----- Header -----
+    const header = document.createElement('div');
+    header.className = 'column-header';
+    header.draggable = true;
+    header.dataset.colId = col.id;
 
-    colEl.innerHTML = `
-      <div class="column-header" draggable="true" data-col-id="${col.id}">
-        <div class="column-header-left">
-          <span class="column-icon">${iconSvg}</span>
-          <div>
-            <div class="column-title">${escapeHtml(col.title || getColumnTitle(col.type, col.param))}</div>
-            ${col.param ? `<div class="column-subtitle">${escapeHtml(col.type)}</div>` : ''}
-          </div>
-        </div>
-        <div class="column-header-right">
-          <button class="col-btn" data-action="back" title="Back">
-            ${ICONS.back}
-          </button>
-          <button class="col-btn" data-action="refresh" title="Refresh">
-            ${ICONS.refresh}
-          </button>
-          ${moveBtn}
-          <button class="col-btn danger" data-action="close" title="Remove column">
-            ${ICONS.close}
-          </button>
-        </div>
-      </div>
-      <div class="column-loading"><div class="spinner"></div></div>
-    `;
+    // Back button (far left, hidden by default; shown by updateBackButtonVisibility)
+    const backBtn = document.createElement('button');
+    backBtn.className = 'col-btn col-back';
+    backBtn.dataset.action = 'back';
+    backBtn.title = 'Back';
+    backBtn.style.display = 'none';
+    backBtn.appendChild(svgFromString(ICONS.back));
+    header.appendChild(backBtn);
 
-    // Column header button handlers
+    // Left cluster: icon + title (+ optional subtitle)
+    const left = document.createElement('div');
+    left.className = 'column-header-left';
+
+    const iconSpan = document.createElement('span');
+    iconSpan.className = 'column-icon';
+    iconSpan.appendChild(svgFromString(ICONS[typeDef.icon] || ICONS.home));
+    left.appendChild(iconSpan);
+
+    const titleWrap = document.createElement('div');
+    const titleDiv = document.createElement('div');
+    titleDiv.className = 'column-title';
+    titleDiv.textContent = col.title || getColumnTitle(col.type, col.param);
+    titleWrap.appendChild(titleDiv);
+    if (col.param) {
+      const subDiv = document.createElement('div');
+      subDiv.className = 'column-subtitle';
+      subDiv.textContent = col.type;
+      titleWrap.appendChild(subDiv);
+    }
+    left.appendChild(titleWrap);
+    header.appendChild(left);
+
+    // Right cluster: refresh + 3-dot menu
+    const right = document.createElement('div');
+    right.className = 'column-header-right';
+
+    const refreshBtn = document.createElement('button');
+    refreshBtn.className = 'col-btn';
+    refreshBtn.dataset.action = 'refresh';
+    refreshBtn.title = 'Refresh';
+    refreshBtn.appendChild(svgFromString(ICONS.refresh));
+    right.appendChild(refreshBtn);
+
+    const menuBtn = document.createElement('button');
+    menuBtn.className = 'col-btn';
+    menuBtn.dataset.action = 'menu';
+    menuBtn.title = 'More options';
+    menuBtn.appendChild(svgFromString(ICONS.menu));
+    right.appendChild(menuBtn);
+
+    header.appendChild(right);
+    colEl.appendChild(header);
+
+    // Loading placeholder (replaced by iframe in loadIframeForColumn)
+    const loading = document.createElement('div');
+    loading.className = 'column-loading';
+    const spinner = document.createElement('div');
+    spinner.className = 'spinner';
+    loading.appendChild(spinner);
+    colEl.appendChild(loading);
+
+    // Column header button handlers (event delegation on the column root)
     colEl.addEventListener('click', (e) => {
       const btn = e.target.closest('[data-action]');
       if (!btn) return;
 
       const action = btn.dataset.action;
-      if (action === 'close') {
-        removeColumn(col.id);
-      } else if (action === 'back') {
+      if (action === 'back') {
         const iframe = colEl.querySelector('iframe');
         if (iframe) {
-          try { iframe.contentWindow.postMessage({ type: 'tweetdeckx-back' }, '*'); } catch (e) {}
+          try { iframe.contentWindow.postMessage({ type: 'tweetdeckx-back' }, '*'); } catch (err) {}
         }
       } else if (action === 'refresh') {
         const iframe = colEl.querySelector('iframe');
         if (iframe) {
-          iframe.src = iframe.src;
+          iframe.src = getCanonicalUrl(col);
         }
         activateColumn(col.id);
-      } else if (action === 'move') {
-        toggleMoveDropdown(colEl, col.id);
+      } else if (action === 'menu') {
+        toggleColMenu(colEl, col.id);
       }
     });
 
     // Column drag-and-drop
-    const header = colEl.querySelector('.column-header');
     setupColumnDragDrop(header, colEl, col.id);
 
     // Rate limit: interaction-driven activation
@@ -963,7 +998,7 @@
     iframe.className = 'column-frame';
     iframe.sandbox = 'allow-same-origin allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox';
     iframe.allow = 'autoplay; encrypted-media; fullscreen';
-    iframe.src = getColumnUrl(col.type, col.param);
+    iframe.src = getCanonicalUrl(col);
     iframe.loading = 'lazy';
 
     iframe.addEventListener('load', () => {
@@ -1244,15 +1279,46 @@
   }
 
   // -----------------------------------------
-  // Move column dropdown
+  // Column 3-dot menu (with drill-downs)
   // -----------------------------------------
 
-  function closeAllDropdowns() {
-    document.querySelectorAll('.move-dropdown').forEach(el => el.remove());
+  // Small helper: build a menu row with an emoji/icon on the left, a label in
+  // the middle, and an optional chevron on the right.
+  function makeMenuItem({ icon, label, chevron, danger }) {
+    const item = document.createElement('button');
+    item.className = 'col-menu-item' + (danger ? ' col-menu-item-danger' : '');
+
+    const iconSpan = document.createElement('span');
+    iconSpan.className = 'col-menu-icon';
+    iconSpan.textContent = icon || '';
+    item.appendChild(iconSpan);
+
+    const labelSpan = document.createElement('span');
+    labelSpan.className = 'col-menu-label-text';
+    labelSpan.textContent = label;
+    item.appendChild(labelSpan);
+
+    if (chevron) {
+      const chev = document.createElement('span');
+      chev.className = 'col-menu-chev';
+      chev.textContent = chevron;
+      item.appendChild(chev);
+    }
+    return item;
   }
 
-  function toggleMoveDropdown(colEl, colId) {
-    const existing = colEl.querySelector('.move-dropdown');
+  function makeMenuDivider() {
+    const d = document.createElement('div');
+    d.className = 'col-menu-divider';
+    return d;
+  }
+
+  function closeAllDropdowns() {
+    document.querySelectorAll('.col-menu').forEach(el => el.remove());
+  }
+
+  function toggleColMenu(colEl, colId) {
+    const existing = colEl.querySelector('.col-menu');
     if (existing) {
       existing.remove();
       return;
@@ -1260,33 +1326,74 @@
 
     closeAllDropdowns();
 
-    const dropdown = document.createElement('div');
-    dropdown.className = 'move-dropdown';
+    let menuView = 'root';
 
-    const header = document.createElement('div');
-    header.className = 'move-dropdown-header';
-    header.textContent = 'Move to\u2026';
-    dropdown.appendChild(header);
+    const menu = document.createElement('div');
+    menu.className = 'col-menu';
 
-    state.pages.forEach((page) => {
-      if (page.id === state.activePageId) return;
+    function render() {
+      menu.replaceChildren();
+      if (menuView === 'root') {
+        renderRoot();
+      } else if (menuView === 'move') {
+        renderMove();
+      }
+    }
 
-      const item = document.createElement('button');
-      item.className = 'move-dropdown-item';
-      item.innerHTML = `<span class="move-emoji">${page.emoji}</span> ${escapeHtml(page.name)}`;
-      item.addEventListener('click', () => {
-        moveColumn(colId, page.id);
-        dropdown.remove();
+    function renderRoot() {
+      const page = getActivePage();
+      if (!page) return;
+      const col = page.columns.find(c => c.id === colId);
+      if (!col) return;
+
+      // Move to page… (only when there are multiple pages)
+      if (state.pages.length > 1) {
+        const moveItem = makeMenuItem({ icon: '📂', label: 'Move to page…', chevron: '›' });
+        moveItem.addEventListener('click', () => {
+          menuView = 'move';
+          render();
+        });
+        menu.appendChild(moveItem);
+        menu.appendChild(makeMenuDivider());
+      }
+
+      // Remove column
+      const removeItem = makeMenuItem({ icon: '🗑', label: 'Remove column', danger: true });
+      removeItem.addEventListener('click', () => {
+        menu.remove();
+        removeColumn(colId);
       });
-      dropdown.appendChild(item);
-    });
+      menu.appendChild(removeItem);
+    }
 
-    colEl.appendChild(dropdown);
+    function renderMove() {
+      const backRow = makeMenuItem({ icon: '‹', label: 'Back' });
+      backRow.classList.add('col-menu-back');
+      backRow.addEventListener('click', () => {
+        menuView = 'root';
+        render();
+      });
+      menu.appendChild(backRow);
+      menu.appendChild(makeMenuDivider());
+
+      state.pages.forEach((page) => {
+        if (page.id === state.activePageId) return;
+        const item = makeMenuItem({ icon: page.emoji, label: page.name });
+        item.addEventListener('click', () => {
+          menu.remove();
+          moveColumn(colId, page.id);
+        });
+        menu.appendChild(item);
+      });
+    }
+
+    render();
+    colEl.appendChild(menu);
 
     // Dismiss on outside click
     const dismissHandler = (e) => {
-      if (!dropdown.contains(e.target) && !e.target.closest('[data-action="move"]')) {
-        dropdown.remove();
+      if (!menu.contains(e.target) && !e.target.closest('[data-action="menu"]')) {
+        menu.remove();
         document.removeEventListener('click', dismissHandler, true);
       }
     };
