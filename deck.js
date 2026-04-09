@@ -1470,10 +1470,12 @@
       input.addEventListener('keydown', (e) => {
         if (e.key === 'Enter') {
           e.preventDefault();
+          e.stopPropagation();
           renameColumn(colId, input.value);
           menu.remove();
         } else if (e.key === 'Escape') {
           e.preventDefault();
+          e.stopPropagation();
           menu.remove();
         }
       });
