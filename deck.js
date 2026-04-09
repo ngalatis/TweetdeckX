@@ -234,8 +234,9 @@
   // inject a trusted static icon into a DOM tree built with createElement,
   // without touching the element's inner markup via string APIs.
   function svgFromString(svgSource) {
-    const doc = new DOMParser().parseFromString(svgSource, 'image/svg+xml');
-    return document.importNode(doc.documentElement, true);
+    const range = document.createRange();
+    const fragment = range.createContextualFragment(svgSource);
+    return fragment.firstElementChild;
   }
 
   function applyTheme() {
@@ -326,10 +327,9 @@
 
   // Per-column runtime state that is NOT persisted. Populated as iframes
   // report their current URL via the 'tweetdeckx-url-changed' message and
-  // cleared in removeColumn (but intentionally NOT in moveColumn — the
-  // column still exists after a move, just on a different page). Survives
-  // page switches because hidden pages keep their iframes in the DOM via
-  // display: none.
+  // cleared in removeColumn AND moveColumn (both destroy the iframe, so the
+  // cached URL would be stale for the next iframe). Survives page switches
+  // because hidden pages keep their iframes in the DOM via display: none.
   const colRuntimeState = new Map(); // Map<colId, { currentUrl: string }>
 
   function updateBackButtonVisibility(colId) {
@@ -1317,6 +1317,7 @@
       clearInterval(timer);
       refreshTimers.delete(colId);
     }
+    colRuntimeState.delete(colId);
 
     // Remove the column element from the active wrapper's DOM
     const wrapper = getActiveWrapper();
@@ -1632,6 +1633,19 @@
   }
 
   function deletePage(pageId) {
+    // Clean up runtime state for all columns on the deleted page
+    const pageToDelete = state.pages.find(p => p.id === pageId);
+    if (pageToDelete) {
+      for (const col of pageToDelete.columns) {
+        colRuntimeState.delete(col.id);
+        const t = refreshTimers.get(col.id);
+        if (t) {
+          clearInterval(t);
+          refreshTimers.delete(col.id);
+        }
+      }
+    }
+
     // Remove the page's wrapper from DOM
     invalidateCache(pageId);
     state.pages = state.pages.filter(p => p.id !== pageId);
