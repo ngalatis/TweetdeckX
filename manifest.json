@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "TweetDeckX - Multi-Column X Client",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "TweetDeck-style multi-column interface for X/Twitter using your logged-in session.",
   "icons": {
     "16": "icons/icon16.png",
