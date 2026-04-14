@@ -41,6 +41,7 @@
     close:    '<svg width="14" height="14" viewBox="0 0 24 24" fill="none"><line x1="18" y1="6" x2="6" y2="18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><line x1="6" y1="6" x2="18" y2="18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>',
     move:     '<svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M5 12h14M12 5l7 7-7 7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>',
     back:     '<svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M19 12H5M12 19l-7-7 7-7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+    menu:     '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg>',
   };
 
   // -----------------------------------------
@@ -230,6 +231,15 @@
     return div.innerHTML;
   }
 
+  // Parses an SVG source string into a detached Element. Used when we want to
+  // inject a trusted static icon into a DOM tree built with createElement,
+  // without touching the element's inner markup via string APIs.
+  function svgFromString(svgSource) {
+    const range = document.createRange();
+    const fragment = range.createContextualFragment(svgSource);
+    return fragment.firstElementChild;
+  }
+
   function applyTheme() {
     document.documentElement.setAttribute('data-theme', state.settings.theme);
   }
@@ -241,7 +251,7 @@
   let state = {
     pages: [],
     activePageId: null,
-    settings: { columnWidth: 420, theme: 'dark', hideAds: false },
+    settings: { columnWidth: 420, theme: 'dark', hideAds: false, hideColumnHeader: false },
   };
 
   // -----------------------------------------
@@ -315,6 +325,30 @@
   let activeColumnId = null;       // which column is currently Active (resumed)
   let idleTimer = null;            // timer to pause the active column after inactivity
   let refreshTimers = new Map();   // Map<columnId, timerId> for 5-min lazy refresh
+
+  // Per-column runtime state that is NOT persisted. Populated as iframes
+  // report their current URL via the 'tweetdeckx-url-changed' message and
+  // cleared in removeColumn AND moveColumn (both destroy the iframe, so the
+  // cached URL would be stale for the next iframe). Survives page switches
+  // because hidden pages keep their iframes in the DOM via display: none.
+  const colRuntimeState = new Map(); // Map<colId, { currentUrl: string }>
+
+  function updateBackButtonVisibility(colId) {
+    const colEl = columnsContainer.querySelector(`.page-wrapper .deck-column[data-id="${colId}"]`);
+    if (!colEl) return;
+    const backBtn = colEl.querySelector('.col-back');
+    if (!backBtn) return; // header hasn't been rewritten yet (Task 3 adds this element)
+
+    const page = state.pages.find(p => p.columns.some(c => c.id === colId));
+    if (!page) return;
+    const col = page.columns.find(c => c.id === colId);
+    if (!col) return;
+
+    const rs = colRuntimeState.get(colId);
+    const currentUrl = rs && rs.currentUrl;
+    const show = currentUrl && !urlsEquivalent(currentUrl, getCanonicalUrl(col));
+    backBtn.style.display = show ? '' : 'none';
+  }
 
   const IDLE_TIMEOUT = 45000;      // 45 seconds of no mouse activity → pause
   const REFRESH_INTERVAL = 300000; // 5 minutes between lazy refreshes
@@ -495,6 +529,7 @@
   const colWidthValue = document.getElementById('col-width-value');
   const themeSelect = document.getElementById('theme-select');
   const hideAdsToggle = document.getElementById('hide-ads-toggle');
+  const hideColHeaderToggle = document.getElementById('hide-col-header-toggle');
 
   // Column activation is now handled per-column by attachColumnInteractionListeners()
 
@@ -553,6 +588,24 @@
         } else {
           resetIdleTimer();
         }
+        break;
+      }
+    }
+  });
+
+  // Receive iframe URL change reports. Find the column by matching the
+  // message source against live iframes, update runtime state, and refresh
+  // the back-button visibility for that column.
+  window.addEventListener('message', (e) => {
+    if (!e.data || e.data.type !== 'tweetdeckx-url-changed') return;
+    const iframes = columnsContainer.querySelectorAll('iframe');
+    for (const iframe of iframes) {
+      if (iframe.contentWindow === e.source) {
+        const colEl = iframe.closest('.deck-column');
+        if (!colEl) break;
+        const colId = colEl.dataset.id;
+        colRuntimeState.set(colId, { currentUrl: e.data.url });
+        updateBackButtonVisibility(colId);
         break;
       }
     }
@@ -668,6 +721,31 @@
         return param.startsWith('http') ? param : `https://x.com/${param}`;
       default:
         return 'https://x.com/home';
+    }
+  }
+
+  // Returns the URL a column "should" currently show. If the user has used
+  // "Save current view" to persist a specific URL on this column, that wins;
+  // otherwise we derive it from the column type and param.
+  function getCanonicalUrl(col) {
+    return col.url || getColumnUrl(col.type, col.param);
+  }
+
+  // Returns true if two URLs are semantically equivalent for the purpose of
+  // deciding whether the column has navigated away from its canonical URL.
+  // Ignores hash and trailing-slash differences; compares sorted search params.
+  function urlsEquivalent(a, b) {
+    if (!a || !b) return false;
+    try {
+      const ua = new URL(a);
+      const ub = new URL(b);
+      if (ua.origin !== ub.origin) return false;
+      if (ua.pathname.replace(/\/$/, '') !== ub.pathname.replace(/\/$/, '')) return false;
+      const sa = [...ua.searchParams].sort().map(p => p.join('=')).join('&');
+      const sb = [...ub.searchParams].sort().map(p => p.join('=')).join('&');
+      return sa === sb;
+    } catch (e) {
+      return a === b;
     }
   }
 
@@ -814,63 +892,97 @@
     colEl.style.width = state.settings.columnWidth + 'px';
 
     const typeDef = COLUMN_TYPES[col.type] || COLUMN_TYPES.home;
-    const iconSvg = ICONS[typeDef.icon] || ICONS.home;
 
-    const moveBtn = state.pages.length > 1
-      ? `<button class="col-btn" data-action="move" title="Move to another page">${ICONS.move}</button>`
-      : '';
+    // ----- Header -----
+    const header = document.createElement('div');
+    header.className = 'column-header';
+    header.draggable = true;
+    header.dataset.colId = col.id;
 
-    colEl.innerHTML = `
-      <div class="column-header" draggable="true" data-col-id="${col.id}">
-        <div class="column-header-left">
-          <span class="column-icon">${iconSvg}</span>
-          <div>
-            <div class="column-title">${escapeHtml(col.title || getColumnTitle(col.type, col.param))}</div>
-            ${col.param ? `<div class="column-subtitle">${escapeHtml(col.type)}</div>` : ''}
-          </div>
-        </div>
-        <div class="column-header-right">
-          <button class="col-btn" data-action="back" title="Back">
-            ${ICONS.back}
-          </button>
-          <button class="col-btn" data-action="refresh" title="Refresh">
-            ${ICONS.refresh}
-          </button>
-          ${moveBtn}
-          <button class="col-btn danger" data-action="close" title="Remove column">
-            ${ICONS.close}
-          </button>
-        </div>
-      </div>
-      <div class="column-loading"><div class="spinner"></div></div>
-    `;
+    // Back button (far left, hidden by default; shown by updateBackButtonVisibility)
+    const backBtn = document.createElement('button');
+    backBtn.className = 'col-btn col-back';
+    backBtn.dataset.action = 'back';
+    backBtn.title = 'Back';
+    backBtn.style.display = 'none';
+    backBtn.appendChild(svgFromString(ICONS.back));
+    header.appendChild(backBtn);
 
-    // Column header button handlers
+    // Left cluster: icon + title (+ optional subtitle)
+    const left = document.createElement('div');
+    left.className = 'column-header-left';
+
+    const iconSpan = document.createElement('span');
+    iconSpan.className = 'column-icon';
+    iconSpan.appendChild(svgFromString(ICONS[typeDef.icon] || ICONS.home));
+    left.appendChild(iconSpan);
+
+    const titleWrap = document.createElement('div');
+    const titleDiv = document.createElement('div');
+    titleDiv.className = 'column-title';
+    titleDiv.textContent = col.title || getColumnTitle(col.type, col.param);
+    titleWrap.appendChild(titleDiv);
+    if (col.param) {
+      const subDiv = document.createElement('div');
+      subDiv.className = 'column-subtitle';
+      subDiv.textContent = col.type;
+      titleWrap.appendChild(subDiv);
+    }
+    left.appendChild(titleWrap);
+    header.appendChild(left);
+
+    // Right cluster: refresh + 3-dot menu
+    const right = document.createElement('div');
+    right.className = 'column-header-right';
+
+    const refreshBtn = document.createElement('button');
+    refreshBtn.className = 'col-btn';
+    refreshBtn.dataset.action = 'refresh';
+    refreshBtn.title = 'Refresh';
+    refreshBtn.appendChild(svgFromString(ICONS.refresh));
+    right.appendChild(refreshBtn);
+
+    const menuBtn = document.createElement('button');
+    menuBtn.className = 'col-btn';
+    menuBtn.dataset.action = 'menu';
+    menuBtn.title = 'More options';
+    menuBtn.appendChild(svgFromString(ICONS.menu));
+    right.appendChild(menuBtn);
+
+    header.appendChild(right);
+    colEl.appendChild(header);
+
+    // Loading placeholder (replaced by iframe in loadIframeForColumn)
+    const loading = document.createElement('div');
+    loading.className = 'column-loading';
+    const spinner = document.createElement('div');
+    spinner.className = 'spinner';
+    loading.appendChild(spinner);
+    colEl.appendChild(loading);
+
+    // Column header button handlers (event delegation on the column root)
     colEl.addEventListener('click', (e) => {
       const btn = e.target.closest('[data-action]');
       if (!btn) return;
 
       const action = btn.dataset.action;
-      if (action === 'close') {
-        removeColumn(col.id);
-      } else if (action === 'back') {
+      if (action === 'back') {
         const iframe = colEl.querySelector('iframe');
         if (iframe) {
-          try { iframe.contentWindow.postMessage({ type: 'tweetdeckx-back' }, '*'); } catch (e) {}
+          try { iframe.contentWindow.postMessage({ type: 'tweetdeckx-back' }, '*'); } catch (err) {}
         }
       } else if (action === 'refresh') {
         const iframe = colEl.querySelector('iframe');
         if (iframe) {
-          iframe.src = iframe.src;
+          iframe.src = getCanonicalUrl(col);
         }
         activateColumn(col.id);
-      } else if (action === 'move') {
-        toggleMoveDropdown(colEl, col.id);
+      } else if (action === 'menu') {
+        toggleColMenu(colEl, col.id);
       }
     });
 
     // Column drag-and-drop
-    const header = colEl.querySelector('.column-header');
     setupColumnDragDrop(header, colEl, col.id);
 
     // Rate limit: interaction-driven activation
@@ -887,12 +999,16 @@
     iframe.className = 'column-frame';
     iframe.sandbox = 'allow-same-origin allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox';
     iframe.allow = 'autoplay; encrypted-media; fullscreen';
-    iframe.src = getColumnUrl(col.type, col.param);
+    iframe.src = getCanonicalUrl(col);
     iframe.loading = 'lazy';
 
     iframe.addEventListener('load', () => {
       try {
-        iframe.contentWindow.postMessage({ type: 'tweetdeckx-init', hideAds: state.settings.hideAds }, '*');
+        iframe.contentWindow.postMessage({
+          type: 'tweetdeckx-init',
+          hideAds: state.settings.hideAds,
+          hideColumnHeader: state.settings.hideColumnHeader && col.type !== 'search',
+        }, '*');
         iframe.contentWindow.postMessage({
           type: 'tweetdeckx-set-column-width',
           width: state.settings.columnWidth
@@ -919,6 +1035,28 @@
         iframe.contentWindow.postMessage({
           type: 'tweetdeckx-set-hide-ads',
           enabled: state.settings.hideAds,
+        }, '*');
+      } catch (e) { /* Cross-origin — content script handles it */ }
+    });
+  }
+
+  function broadcastHideColumnHeader() {
+    document.querySelectorAll('.deck-column').forEach(colEl => {
+      const colId = colEl.dataset.id;
+      // Resolve the column's type from any page (not just active — cached
+      // pages have live iframes too via display:none).
+      let colType = null;
+      for (const p of state.pages) {
+        const found = p.columns.find(c => c.id === colId);
+        if (found) { colType = found.type; break; }
+      }
+      const effective = state.settings.hideColumnHeader && colType !== 'search';
+      const iframe = colEl.querySelector('iframe');
+      if (!iframe) return;
+      try {
+        iframe.contentWindow.postMessage({
+          type: 'tweetdeckx-set-hide-column-header',
+          enabled: effective,
         }, '*');
       } catch (e) { /* Cross-origin — content script handles it */ }
     });
@@ -1068,6 +1206,7 @@
     const page = getActivePage();
     if (!page) return;
     page.columns = page.columns.filter(c => c.id !== colId);
+    colRuntimeState.delete(colId);
     saveState();
 
     // Clean up timers for this column
@@ -1167,15 +1306,46 @@
   }
 
   // -----------------------------------------
-  // Move column dropdown
+  // Column 3-dot menu (with drill-downs)
   // -----------------------------------------
 
-  function closeAllDropdowns() {
-    document.querySelectorAll('.move-dropdown').forEach(el => el.remove());
+  // Small helper: build a menu row with an emoji/icon on the left, a label in
+  // the middle, and an optional chevron on the right.
+  function makeMenuItem({ icon, label, chevron, danger }) {
+    const item = document.createElement('button');
+    item.className = 'col-menu-item' + (danger ? ' col-menu-item-danger' : '');
+
+    const iconSpan = document.createElement('span');
+    iconSpan.className = 'col-menu-icon';
+    iconSpan.textContent = icon || '';
+    item.appendChild(iconSpan);
+
+    const labelSpan = document.createElement('span');
+    labelSpan.className = 'col-menu-label-text';
+    labelSpan.textContent = label;
+    item.appendChild(labelSpan);
+
+    if (chevron) {
+      const chev = document.createElement('span');
+      chev.className = 'col-menu-chev';
+      chev.textContent = chevron;
+      item.appendChild(chev);
+    }
+    return item;
   }
 
-  function toggleMoveDropdown(colEl, colId) {
-    const existing = colEl.querySelector('.move-dropdown');
+  function makeMenuDivider() {
+    const d = document.createElement('div');
+    d.className = 'col-menu-divider';
+    return d;
+  }
+
+  function closeAllDropdowns() {
+    document.querySelectorAll('.col-menu').forEach(el => el.remove());
+  }
+
+  function toggleColMenu(colEl, colId) {
+    const existing = colEl.querySelector('.col-menu');
     if (existing) {
       existing.remove();
       return;
@@ -1183,33 +1353,174 @@
 
     closeAllDropdowns();
 
-    const dropdown = document.createElement('div');
-    dropdown.className = 'move-dropdown';
+    let menuView = 'root';
 
-    const header = document.createElement('div');
-    header.className = 'move-dropdown-header';
-    header.textContent = 'Move to\u2026';
-    dropdown.appendChild(header);
+    const menu = document.createElement('div');
+    menu.className = 'col-menu';
 
-    state.pages.forEach((page) => {
-      if (page.id === state.activePageId) return;
+    function render() {
+      menu.replaceChildren();
+      if (menuView === 'root') {
+        renderRoot();
+      } else if (menuView === 'move') {
+        renderMove();
+      } else if (menuView === 'rename') {
+        renderRename();
+      }
+    }
 
-      const item = document.createElement('button');
-      item.className = 'move-dropdown-item';
-      item.innerHTML = `<span class="move-emoji">${page.emoji}</span> ${escapeHtml(page.name)}`;
-      item.addEventListener('click', () => {
-        moveColumn(colId, page.id);
-        dropdown.remove();
+    function renderRoot() {
+      const page = getActivePage();
+      if (!page) return;
+      const col = page.columns.find(c => c.id === colId);
+      if (!col) return;
+
+      // Save current view
+      const rs = colRuntimeState.get(colId);
+      const currentUrl = rs && rs.currentUrl;
+      const canSave = !!(currentUrl && !urlsEquivalent(currentUrl, getCanonicalUrl(col)));
+
+      const saveItem = makeMenuItem({ icon: '💾', label: 'Save current view' });
+      saveItem.disabled = !canSave;
+      saveItem.title = canSave ? 'Save this URL as the column default' : 'Already on saved view';
+      saveItem.addEventListener('click', () => {
+        if (!canSave) return;
+        menu.remove();
+        saveCurrentView(colId);
       });
-      dropdown.appendChild(item);
-    });
+      menu.appendChild(saveItem);
 
-    colEl.appendChild(dropdown);
+      menu.appendChild(makeMenuDivider());
 
-    // Dismiss on outside click
+      // Rename
+      const renameItem = makeMenuItem({ icon: '✏️', label: 'Rename column' });
+      renameItem.addEventListener('click', () => {
+        menuView = 'rename';
+        render();
+      });
+      menu.appendChild(renameItem);
+
+      menu.appendChild(makeMenuDivider());
+
+      // Move to page… (only when there are multiple pages)
+      if (state.pages.length > 1) {
+        const moveItem = makeMenuItem({ icon: '📂', label: 'Move to page…', chevron: '›' });
+        moveItem.addEventListener('click', () => {
+          menuView = 'move';
+          render();
+        });
+        menu.appendChild(moveItem);
+        menu.appendChild(makeMenuDivider());
+      }
+
+      // Remove column
+      const removeItem = makeMenuItem({ icon: '🗑', label: 'Remove column', danger: true });
+      removeItem.addEventListener('click', () => {
+        menu.remove();
+        removeColumn(colId);
+      });
+      menu.appendChild(removeItem);
+    }
+
+    function renderMove() {
+      const backRow = makeMenuItem({ icon: '‹', label: 'Back' });
+      backRow.classList.add('col-menu-back');
+      backRow.addEventListener('click', () => {
+        menuView = 'root';
+        render();
+      });
+      menu.appendChild(backRow);
+      menu.appendChild(makeMenuDivider());
+
+      state.pages.forEach((page) => {
+        if (page.id === state.activePageId) return;
+        const item = makeMenuItem({ icon: page.emoji, label: page.name });
+        item.addEventListener('click', () => {
+          menu.remove();
+          moveColumn(colId, page.id);
+        });
+        menu.appendChild(item);
+      });
+    }
+
+    function renderRename() {
+      const page = getActivePage();
+      if (!page) return;
+      const col = page.columns.find(c => c.id === colId);
+      if (!col) return;
+
+      const backRow = makeMenuItem({ icon: '‹', label: 'Back' });
+      backRow.classList.add('col-menu-back');
+      backRow.addEventListener('click', () => {
+        menuView = 'root';
+        render();
+      });
+      menu.appendChild(backRow);
+      menu.appendChild(makeMenuDivider());
+
+      const label = document.createElement('div');
+      label.className = 'col-menu-section-label';
+      label.textContent = 'Column title';
+      menu.appendChild(label);
+
+      const input = document.createElement('input');
+      input.className = 'col-menu-input';
+      input.type = 'text';
+      input.value = col.title || getColumnTitle(col.type, col.param);
+      input.placeholder = 'Column title';
+      menu.appendChild(input);
+
+      const actions = document.createElement('div');
+      actions.className = 'col-menu-actions';
+
+      const cancelBtn = document.createElement('button');
+      cancelBtn.className = 'col-menu-action';
+      cancelBtn.textContent = 'Cancel';
+      cancelBtn.addEventListener('click', () => {
+        menu.remove();
+      });
+      actions.appendChild(cancelBtn);
+
+      const saveBtn = document.createElement('button');
+      saveBtn.className = 'col-menu-action col-menu-action-primary';
+      saveBtn.textContent = 'Save';
+      saveBtn.addEventListener('click', () => {
+        renameColumn(colId, input.value);
+        menu.remove();
+      });
+      actions.appendChild(saveBtn);
+
+      menu.appendChild(actions);
+
+      // Focus + commit on Enter / cancel on Escape
+      setTimeout(() => input.focus(), 0);
+      input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          e.stopPropagation();
+          renameColumn(colId, input.value);
+          menu.remove();
+        } else if (e.key === 'Escape') {
+          e.preventDefault();
+          e.stopPropagation();
+          menu.remove();
+        }
+      });
+    }
+
+    render();
+    colEl.appendChild(menu);
+
+    // Dismiss on outside click. The isConnected guard self-cleans the handler
+    // if the menu was removed by some other path (toggle-off via re-click,
+    // closeAllDropdowns, removeColumn from a menu item, etc.).
     const dismissHandler = (e) => {
-      if (!dropdown.contains(e.target) && !e.target.closest('[data-action="move"]')) {
-        dropdown.remove();
+      if (!menu.isConnected) {
+        document.removeEventListener('click', dismissHandler, true);
+        return;
+      }
+      if (!menu.contains(e.target) && !e.target.closest('[data-action="menu"]')) {
+        menu.remove();
         document.removeEventListener('click', dismissHandler, true);
       }
     };
@@ -1240,6 +1551,7 @@
       clearInterval(timer);
       refreshTimers.delete(colId);
     }
+    colRuntimeState.delete(colId);
 
     // Remove the column element from the active wrapper's DOM
     const wrapper = getActiveWrapper();
@@ -1259,6 +1571,42 @@
     // If no columns remain on the source page, show empty state
     if (sourcePage.columns.length === 0) {
       renderColumns();
+    }
+  }
+
+  function saveCurrentView(colId) {
+    const page = state.pages.find(p => p.columns.some(c => c.id === colId));
+    if (!page) return;
+    const col = page.columns.find(c => c.id === colId);
+    if (!col) return;
+
+    const rs = colRuntimeState.get(colId);
+    const currentUrl = rs && rs.currentUrl;
+    if (!currentUrl) return;
+    if (urlsEquivalent(currentUrl, getCanonicalUrl(col))) return;
+
+    col.url = currentUrl;
+    saveState();
+    updateBackButtonVisibility(colId);
+  }
+
+  function renameColumn(colId, newTitle) {
+    const page = state.pages.find(p => p.columns.some(c => c.id === colId));
+    if (!page) return;
+    const col = page.columns.find(c => c.id === colId);
+    if (!col) return;
+
+    const trimmed = (newTitle || '').trim();
+    col.title = trimmed || null;
+    saveState();
+
+    // Update the column title DOM in place (no full re-render, no iframe reload)
+    const colEl = columnsContainer.querySelector(`.deck-column[data-id="${colId}"]`);
+    if (colEl) {
+      const titleEl = colEl.querySelector('.column-title');
+      if (titleEl) {
+        titleEl.textContent = col.title || getColumnTitle(col.type, col.param);
+      }
     }
   }
 
@@ -1555,6 +1903,19 @@
   }
 
   function deletePage(pageId) {
+    // Clean up runtime state for all columns on the deleted page
+    const pageToDelete = state.pages.find(p => p.id === pageId);
+    if (pageToDelete) {
+      for (const col of pageToDelete.columns) {
+        colRuntimeState.delete(col.id);
+        const t = refreshTimers.get(col.id);
+        if (t) {
+          clearInterval(t);
+          refreshTimers.delete(col.id);
+        }
+      }
+    }
+
     // Remove the page's wrapper from DOM
     invalidateCache(pageId);
     state.pages = state.pages.filter(p => p.id !== pageId);
@@ -1645,6 +2006,7 @@
     colWidthValue.textContent = state.settings.columnWidth + 'px';
     themeSelect.value = state.settings.theme;
     hideAdsToggle.checked = state.settings.hideAds;
+    hideColHeaderToggle.checked = state.settings.hideColumnHeader;
     settingsOverlay.classList.remove('hidden');
   });
 
@@ -1680,10 +2042,17 @@
     broadcastHideAds();
   });
 
+  hideColHeaderToggle.addEventListener('change', () => {
+    state.settings.hideColumnHeader = hideColHeaderToggle.checked;
+    saveState();
+    broadcastHideColumnHeader();
+  });
+
   document.getElementById('btn-reset-pages').addEventListener('click', () => {
     if (confirm('Reset all pages? This will remove all pages and columns and cannot be undone.')) {
       deactivateActiveColumn();
       clearAllCache();
+      colRuntimeState.clear();
       const defaultPage = {
         id: generateId('page'),
         name: 'Home',

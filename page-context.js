@@ -98,24 +98,47 @@
     }
   }
 
+  // --- URL change emitter ---
+  // Notifies the parent deck when the iframe navigates (SPA or popstate) so it
+  // can toggle the column's conditional back button and support "Save current
+  // view". Debounced to coalesce rapid pushState bursts during hydration.
+  var _urlEmitTimer = null;
+  function emitUrlChange() {
+    if (_urlEmitTimer) return;
+    _urlEmitTimer = setTimeout(function () {
+      _urlEmitTimer = null;
+      window.postMessage({
+        type: 'tweetdeckx-url-changed',
+        url: window.location.href,
+      }, '*');
+    }, 50);
+  }
+
   var _origPushState = history.pushState;
   var _origReplaceState = history.replaceState;
 
   history.pushState = function () {
     var result = _origPushState.apply(this, arguments);
     checkLightbox();
+    emitUrlChange();
     return result;
   };
 
   history.replaceState = function () {
     var result = _origReplaceState.apply(this, arguments);
     checkLightbox();
+    emitUrlChange();
     return result;
   };
 
   window.addEventListener('popstate', function () {
     checkLightbox();
+    emitUrlChange();
   });
+
+  // Fire an initial URL so the parent deck has a baseline for this column
+  // even if the page never navigates.
+  emitUrlChange();
 
   // --- User activity detection ---
   // Scroll/click events inside iframes don't propagate to the parent deck page.

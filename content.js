@@ -36,6 +36,7 @@
       isTweetDeckX = true;
       applyCompactStyles();
       applyHideAds(e.data.hideAds);
+      applyHideColumnHeader(e.data.hideColumnHeader);
     }
     if (e.data && e.data.type === 'tweetdeckx-set-column-width') {
       document.documentElement.style.setProperty('--tweetdeckx-col-width', e.data.width + 'px');
@@ -46,8 +47,15 @@
     if (e.data && e.data.type === 'tweetdeckx-set-hide-ads') {
       applyHideAds(e.data.enabled);
     }
+    if (e.data && e.data.type === 'tweetdeckx-set-hide-column-header') {
+      applyHideColumnHeader(e.data.enabled);
+    }
     // Forward user activity (scroll/click/keydown) so deck keeps the column active
     if (e.data && e.data.type === 'tweetdeckx-user-activity') {
+      try { window.parent.postMessage(e.data, '*'); } catch (err) {}
+    }
+    // Forward iframe URL changes to the parent deck
+    if (e.data && e.data.type === 'tweetdeckx-url-changed') {
       try { window.parent.postMessage(e.data, '*'); } catch (err) {}
     }
     // Forward lightbox open/close to deck page so it can expand the iframe
@@ -216,6 +224,29 @@
         /* Hide premium upsell banners */
         [data-testid="cellInnerDiv"]:has(a[href="/i/premium_sign_up"]),
         [data-testid="cellInnerDiv"]:has(a[href="/settings/monetization"]) {
+          display: none !important;
+        }
+      `;
+      (document.head || document.documentElement).appendChild(style);
+    } else if (!enabled && existing) {
+      existing.remove();
+    }
+  }
+
+  function applyHideColumnHeader(enabled) {
+    const id = 'tweetdeckx-hide-col-header';
+    const existing = document.getElementById(id);
+    if (enabled && !existing) {
+      const style = document.createElement('style');
+      style.id = id;
+      style.textContent = `
+        /* Hide X.com's in-iframe app bar (profile header, tweet-detail header, etc.).
+           X.com wraps the whole column in a sticky wrapper (direct child of
+           primaryColumn), and the actual header bar sits one level below that
+           wrapper. We target the grandchild that contains the app-bar-back
+           button so we hide the ~53px header without nuking the tweet list.
+           Uses :has() which is supported in Chrome 105+. */
+        [data-testid="primaryColumn"] > div > div:has([data-testid="app-bar-back"]) {
           display: none !important;
         }
       `;
