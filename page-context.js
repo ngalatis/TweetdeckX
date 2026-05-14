@@ -59,9 +59,13 @@
           _intervals[id].realId = null;
         }
       }
-      // Pause all videos so they stop cleanly instead of stalling mid-buffer
+      // Pause all videos so they stop cleanly instead of stalling mid-buffer.
+      // Skip the video currently in Picture-in-Picture so it keeps playing
+      // outside the browser window even when the column is out of focus.
+      var pipVideo = document.pictureInPictureElement;
       var videos = document.querySelectorAll('video');
       for (var i = 0; i < videos.length; i++) {
+        if (videos[i] === pipVideo) continue;
         try { videos[i].pause(); } catch (e) {}
       }
     } else if (e.data.type === 'tweetdeckx-resume') {
