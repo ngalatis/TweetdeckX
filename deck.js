@@ -740,6 +740,7 @@
   function getSearchFilterTerms(col) {
     const terms = [];
     if (col.hideReplies) terms.push('-filter:replies');
+    if (col.clearedAt) terms.push(`since_time:${col.clearedAt}`);
     return terms;
   }
 
@@ -815,6 +816,7 @@
   function getColumnSubtitle(col) {
     const parts = [col.type];
     if (col.hideReplies) parts.push('no replies');
+    if (col.clearedAt) parts.push('cleared');
     return parts.join(' · ');
   }
 
@@ -1467,6 +1469,23 @@
         });
         menu.appendChild(repliesItem);
 
+        const clearItem = makeMenuItem({ icon: '🧹', label: 'Clear column' });
+        clearItem.title = 'Hide the posts loaded so far and only show newer ones';
+        clearItem.addEventListener('click', () => {
+          menu.remove();
+          clearColumn(colId);
+        });
+        menu.appendChild(clearItem);
+
+        if (col.clearedAt) {
+          const undoItem = makeMenuItem({ icon: '↩️', label: 'Undo clear' });
+          undoItem.addEventListener('click', () => {
+            menu.remove();
+            undoClearColumn(colId);
+          });
+          menu.appendChild(undoItem);
+        }
+
         menu.appendChild(makeMenuDivider());
       }
 
@@ -1693,6 +1712,60 @@
     } else {
       delete col.hideReplies;
     }
+    saveState();
+    updateColumnSubtitle(col);
+    reloadColumn(col);
+  }
+
+  // Asks a column's iframe when the newest post it is showing was created.
+  // Resolves to null if the frame can't tell or doesn't answer in time.
+  function requestNewestPostTime(iframe) {
+    return new Promise((resolve) => {
+      const timer = setTimeout(() => finish(null), 1000);
+      function onMessage(e) {
+        if (e.source !== iframe.contentWindow) return;
+        if (!e.data || e.data.type !== 'tweetdeckx-newest-post-time') return;
+        finish(e.data.time);
+      }
+      function finish(time) {
+        clearTimeout(timer);
+        window.removeEventListener('message', onMessage);
+        resolve(typeof time === 'number' ? time : null);
+      }
+      window.addEventListener('message', onMessage);
+      try {
+        iframe.contentWindow.postMessage({ type: 'tweetdeckx-get-newest-post-time' }, '*');
+      } catch (e) {
+        finish(null);
+      }
+    });
+  }
+
+  // Clears a search column by only showing posts created after the newest
+  // one it has loaded. Taking the cutoff from the loaded posts rather than
+  // the clock means posts that arrived while the column was paused aren't
+  // skipped. With nothing loaded to go by, an earlier cutoff is kept (the
+  // user hasn't been shown anything newer), otherwise the current time.
+  async function clearColumn(colId) {
+    const colEl = columnsContainer.querySelector(`.deck-column[data-id="${colId}"]`);
+    const iframe = colEl && colEl.querySelector('iframe');
+    const newest = iframe ? await requestNewestPostTime(iframe) : null;
+
+    const col = findColumn(colId);
+    if (!col) return;
+    col.clearedAt = newest !== null
+      ? Math.floor(newest / 1000)
+      : col.clearedAt || Math.floor(Date.now() / 1000);
+    saveState();
+    updateColumnSubtitle(col);
+    reloadColumn(col);
+  }
+
+  function undoClearColumn(colId) {
+    const col = findColumn(colId);
+    if (!col) return;
+
+    delete col.clearedAt;
     saveState();
     updateColumnSubtitle(col);
     reloadColumn(col);

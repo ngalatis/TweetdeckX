@@ -44,6 +44,9 @@
     if (e.data && e.data.type === 'tweetdeckx-back') {
       window.history.back();
     }
+    if (e.data && e.data.type === 'tweetdeckx-get-newest-post-time') {
+      reportNewestPostTime();
+    }
     if (e.data && e.data.type === 'tweetdeckx-set-hide-ads') {
       applyHideAds(e.data.enabled);
     }
@@ -254,6 +257,23 @@
     } else if (!enabled && existing) {
       existing.remove();
     }
+  }
+
+  // Tells the deck when the newest post rendered in this search timeline
+  // was created, so "Clear column" hides exactly what the user was shown.
+  // Reports null off the search page (e.g. after opening a post from the
+  // results), where the rendered posts say nothing about the search.
+  function reportNewestPostTime() {
+    let newest = null;
+    if (window.location.pathname === '/search') {
+      document.querySelectorAll('article[data-testid="tweet"] time[datetime]').forEach((el) => {
+        const t = Date.parse(el.getAttribute('datetime'));
+        if (!isNaN(t) && (newest === null || t > newest)) newest = t;
+      });
+    }
+    try {
+      window.parent.postMessage({ type: 'tweetdeckx-newest-post-time', time: newest }, '*');
+    } catch (err) {}
   }
 
   // -------------------------------------------------------
