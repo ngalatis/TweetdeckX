@@ -550,6 +550,26 @@ html, body {
   border-color: var(--accent);
 }
 
+.type-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+  font-size: 13px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  user-select: none;
+}
+
+.type-option.hidden {
+  display: none;
+}
+
+.type-option input {
+  margin: 0;
+  accent-color: var(--accent);
+}
+
 .btn-primary {
   height: 40px;
   padding: 0 20px;

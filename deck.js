@@ -510,6 +510,8 @@
   const typeInputLabel = document.getElementById('type-input-label');
   const typeInput = document.getElementById('type-input');
   const btnConfirmAdd = document.getElementById('btn-confirm-add');
+  const hideRepliesOption = document.getElementById('hide-replies-option');
+  const hideRepliesCheckbox = document.getElementById('hide-replies-checkbox');
 
   const pageModalOverlay = document.getElementById('page-modal-overlay');
   const pageModalTitle = document.getElementById('page-modal-title');
@@ -726,9 +728,57 @@
 
   // Returns the URL a column "should" currently show. If the user has used
   // "Save current view" to persist a specific URL on this column, that wins;
-  // otherwise we derive it from the column type and param.
+  // otherwise we derive it from the column type and param. Search filters
+  // are applied on top of either.
   function getCanonicalUrl(col) {
-    return col.url || getColumnUrl(col.type, col.param);
+    return applySearchFilters(col.url || getColumnUrl(col.type, col.param), col);
+  }
+
+  // Search column filters are X search operators appended to the query, so
+  // X does the filtering server side and the timeline never has to page
+  // through posts we would otherwise hide.
+  function getSearchFilterTerms(col) {
+    const terms = [];
+    if (col.hideReplies) terms.push('-filter:replies');
+    return terms;
+  }
+
+  // Returns the parsed URL if it is an X search page, otherwise null.
+  function parseSearchUrl(url) {
+    try {
+      const u = new URL(url);
+      return u.pathname === '/search' ? u : null;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function isSearchView(col) {
+    return col.type === 'search' && !!parseSearchUrl(col.url || getColumnUrl(col.type, col.param));
+  }
+
+  function applySearchFilters(url, col) {
+    if (col.type !== 'search') return url;
+    const terms = getSearchFilterTerms(col);
+    const u = terms.length ? parseSearchUrl(url) : null;
+    if (!u) return url;
+    u.searchParams.set('q', [u.searchParams.get('q') || '', ...terms].join(' ').trim());
+    return u.toString();
+  }
+
+  // Inverse of applySearchFilters, used by "Save current view" so the saved
+  // URL doesn't bake in operators the column adds on its own. Otherwise
+  // turning a filter off later would leave it stuck in the saved query.
+  function stripSearchFilters(url, col) {
+    if (col.type !== 'search') return url;
+    const terms = getSearchFilterTerms(col);
+    const u = terms.length ? parseSearchUrl(url) : null;
+    if (!u) return url;
+    const words = (u.searchParams.get('q') || '').split(/\s+/).filter(Boolean);
+    const kept = words.filter(w => !terms.includes(w));
+    if (kept.length === words.length) return url;
+    u.searchParams.set('q', kept.join(' '));
+    return u.toString();
   }
 
   // Returns true if two URLs are semantically equivalent for the purpose of
@@ -760,6 +810,18 @@
       case 'url':      return 'Custom';
       default:         return def.label;
     }
+  }
+
+  function getColumnSubtitle(col) {
+    const parts = [col.type];
+    if (col.hideReplies) parts.push('no replies');
+    return parts.join(' · ');
+  }
+
+  function updateColumnSubtitle(col) {
+    const colEl = columnsContainer.querySelector(`.deck-column[data-id="${col.id}"]`);
+    const subEl = colEl && colEl.querySelector('.column-subtitle');
+    if (subEl) subEl.textContent = getColumnSubtitle(col);
   }
 
   // -----------------------------------------
@@ -925,7 +987,7 @@
     if (col.param) {
       const subDiv = document.createElement('div');
       subDiv.className = 'column-subtitle';
-      subDiv.textContent = col.type;
+      subDiv.textContent = getColumnSubtitle(col);
       titleWrap.appendChild(subDiv);
     }
     left.appendChild(titleWrap);
@@ -1163,13 +1225,14 @@
   // Column CRUD
   // -----------------------------------------
 
-  function addColumn(type, param) {
+  function addColumn(type, param, options) {
     const page = getActivePage();
     if (!page) return;
 
     const id = generateId('col');
     const title = getColumnTitle(type, param);
     const col = { id, type, param: param || null, title };
+    if (options && options.hideReplies) col.hideReplies = true;
     page.columns.push(col);
     saveState();
 
@@ -1392,6 +1455,21 @@
 
       menu.appendChild(makeMenuDivider());
 
+      // Search filters (search columns only)
+      if (isSearchView(col)) {
+        const repliesItem = makeMenuItem({
+          icon: '💬',
+          label: col.hideReplies ? 'Show replies' : 'Hide replies',
+        });
+        repliesItem.addEventListener('click', () => {
+          menu.remove();
+          setHideReplies(colId, !col.hideReplies);
+        });
+        menu.appendChild(repliesItem);
+
+        menu.appendChild(makeMenuDivider());
+      }
+
       // Rename
       const renameItem = makeMenuItem({ icon: '✏️', label: 'Rename column' });
       renameItem.addEventListener('click', () => {
@@ -1585,9 +1663,39 @@
     if (!currentUrl) return;
     if (urlsEquivalent(currentUrl, getCanonicalUrl(col))) return;
 
-    col.url = currentUrl;
+    col.url = stripSearchFilters(currentUrl, col);
     saveState();
     updateBackButtonVisibility(colId);
+  }
+
+  function findColumn(colId) {
+    for (const page of state.pages) {
+      const col = page.columns.find(c => c.id === colId);
+      if (col) return col;
+    }
+    return null;
+  }
+
+  // Points an already loaded column at its (possibly changed) canonical URL.
+  // Columns that haven't loaded yet pick the new URL up when they do.
+  function reloadColumn(col) {
+    const colEl = columnsContainer.querySelector(`.deck-column[data-id="${col.id}"]`);
+    const iframe = colEl && colEl.querySelector('iframe');
+    if (iframe) iframe.src = getCanonicalUrl(col);
+  }
+
+  function setHideReplies(colId, enabled) {
+    const col = findColumn(colId);
+    if (!col) return;
+
+    if (enabled) {
+      col.hideReplies = true;
+    } else {
+      delete col.hideReplies;
+    }
+    saveState();
+    updateColumnSubtitle(col);
+    reloadColumn(col);
   }
 
   function renameColumn(colId, newTitle) {
@@ -1942,6 +2050,7 @@
     selectedType = null;
     typeInputArea.classList.add('hidden');
     typeInput.value = '';
+    hideRepliesCheckbox.checked = false;
     document.querySelectorAll('.type-card').forEach(c => c.classList.remove('selected'));
     modalOverlay.classList.remove('hidden');
   }
@@ -1969,6 +2078,7 @@
         selectedType = type;
         typeInputLabel.textContent = def.inputLabel;
         typeInput.placeholder = def.placeholder;
+        hideRepliesOption.classList.toggle('hidden', type !== 'search');
         typeInputArea.classList.remove('hidden');
         typeInput.focus();
       } else {
@@ -1988,7 +2098,9 @@
     if (!selectedType) return;
     const value = typeInput.value.trim();
     if (!value) { typeInput.focus(); return; }
-    addColumn(selectedType, value);
+    addColumn(selectedType, value, {
+      hideReplies: selectedType === 'search' && hideRepliesCheckbox.checked,
+    });
     closeModal();
   }
 
