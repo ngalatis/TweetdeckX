@@ -390,6 +390,11 @@ html, body {
   border-left: 3px solid var(--accent);
 }
 
+/* Column that keyboard shortcuts currently act on */
+.deck-column.keyboard-focus .column-header {
+  box-shadow: inset 0 -2px 0 var(--accent);
+}
+
 /* =========================================
    Modals
    ========================================= */
@@ -591,6 +596,20 @@ html, body {
   display: flex;
   align-items: center;
   gap: 10px;
+}
+
+.setting-label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  padding-right: 16px;
+}
+
+.setting-hint {
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--text-muted);
 }
 
 #col-width-slider {

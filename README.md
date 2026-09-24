@@ -39,6 +39,21 @@ A free, open-source Chrome extension that brings back the TweetDeck-style multi-
 3. Click the **+** button in the sidebar to add columns
 4. Drag columns in the sidebar to reorder them
 
+## Keyboard Shortcuts
+
+Keyboard shortcuts are off by default. Turn them on in **Settings**.
+
+| Key | Action |
+|---|---|
+| `1`-`9`, `0` | Focus column 1-9, or column 10 |
+| `Shift` + `1`-`9` | Switch to page 1-9 |
+| `Shift` + `H` / `Shift` + `L` | Focus the previous / next column |
+| `Backspace` | Go back in the focused column |
+| `Shift` + `N` | Add a column |
+| `Shift` + `P` | Add a page |
+
+Once a column has focus, X's own shortcuts work inside it, such as `j` / `k` to move between posts, `Enter` to open a post, `l` to like, `r` to reply and `t` to repost. Press `?` inside a column for X's full list. Shortcuts are ignored while you are typing in a text field.
+
 ## Known Issues
 
 - X likes to rate limit the shit out of its normal users. Since we're using the simplest form of X timeline we can sometimes hit those rate limits. I'm trying to mitigate this as best as I can but you should be aware if you are a power user with a shit ton of columns.
