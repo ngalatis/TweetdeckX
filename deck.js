@@ -815,8 +815,12 @@
 
   function getColumnSubtitle(col) {
     const parts = [col.type];
-    if (col.hideReplies) parts.push('no replies');
-    if (col.clearedAt) parts.push('cleared');
+    // Filters only apply while the column shows a search (see
+    // applySearchFilters), so only mention them then
+    if (isSearchView(col)) {
+      if (col.hideReplies) parts.push('no replies');
+      if (col.clearedAt) parts.push('cleared');
+    }
     return parts.join(' · ');
   }
 
