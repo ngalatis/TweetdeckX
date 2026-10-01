@@ -199,6 +199,15 @@
           </div>
         </div>
         <div class="setting-row">
+          <div class="setting-label">
+            <label for="keyboard-shortcuts-toggle">Keyboard shortcuts</label>
+            <span class="setting-hint">1-9 jump to a column, Shift+1-9 to a page, Shift+H/L move between columns</span>
+          </div>
+          <div class="setting-control">
+            <input type="checkbox" id="keyboard-shortcuts-toggle">
+          </div>
+        </div>
+        <div class="setting-row">
           <label>Pages</label>
           <div class="setting-control">
             <button id="btn-reset-pages" class="btn-danger-sm">Reset all pages</button>
@@ -235,6 +244,7 @@
     <button class="toast-close" id="toast-close">&times;</button>
   </div>
 
+  <script src="shortcuts.js"></script>
   <script src="deck.js"></script>
 </body>
 </html>

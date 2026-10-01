@@ -37,6 +37,7 @@
       applyCompactStyles();
       applyHideAds(e.data.hideAds);
       applyHideColumnHeader(e.data.hideColumnHeader);
+      setKeyboardShortcuts(e.data.keyboardShortcuts);
     }
     if (e.data && e.data.type === 'tweetdeckx-set-column-width') {
       document.documentElement.style.setProperty('--tweetdeckx-col-width', e.data.width + 'px');
@@ -49,6 +50,9 @@
     }
     if (e.data && e.data.type === 'tweetdeckx-set-hide-column-header') {
       applyHideColumnHeader(e.data.enabled);
+    }
+    if (e.data && e.data.type === 'tweetdeckx-set-keyboard-shortcuts') {
+      setKeyboardShortcuts(e.data.enabled);
     }
     // Forward user activity (scroll/click/keydown) so deck keeps the column active
     if (e.data && e.data.type === 'tweetdeckx-user-activity') {
@@ -275,4 +279,45 @@
       } catch (err) {}
     }
   }, true);
+
+  // -------------------------------------------------------
+  // PHASE 4: Keyboard shortcuts (opt-in)
+  // -------------------------------------------------------
+  // When enabled in the deck settings, TweetDeckX's shortcuts (see
+  // shortcuts.js) are caught here before X.com sees them and forwarded to
+  // the deck, so they keep working while a column has keyboard focus. All
+  // other keys reach X.com as usual. Focus changes are forwarded too, so
+  // the deck can highlight the column that keys go to.
+
+  let keyboardShortcutsEnabled = false;
+
+  function setKeyboardShortcuts(enabled) {
+    keyboardShortcutsEnabled = !!enabled;
+    if (keyboardShortcutsEnabled && document.hasFocus()) notifyFocus(true);
+  }
+
+  function notifyFocus(focused) {
+    try {
+      window.parent.postMessage({ type: 'tweetdeckx-frame-focus', focused }, '*');
+    } catch (err) {}
+  }
+
+  window.addEventListener('keydown', (e) => {
+    if (!keyboardShortcutsEnabled) return;
+    const action = window.TweetDeckXShortcuts.match(e);
+    if (!action) return;
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    try {
+      window.parent.postMessage({ type: 'tweetdeckx-shortcut', action }, '*');
+    } catch (err) {}
+  }, true);
+
+  window.addEventListener('focus', () => {
+    if (keyboardShortcutsEnabled) notifyFocus(true);
+  });
+
+  window.addEventListener('blur', () => {
+    if (keyboardShortcutsEnabled) notifyFocus(false);
+  });
 })();

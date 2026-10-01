@@ -55,7 +55,7 @@
     {
       "matches": ["https://x.com/*", "https://twitter.com/*"],
       "css": ["content.css"],
-      "js": ["content.js"],
+      "js": ["shortcuts.js", "content.js"],
       "all_frames": true,
       "run_at": "document_start"
     }

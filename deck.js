@@ -251,7 +251,7 @@
   let state = {
     pages: [],
     activePageId: null,
-    settings: { columnWidth: 420, theme: 'dark', hideAds: false, hideColumnHeader: false },
+    settings: { columnWidth: 420, theme: 'dark', hideAds: false, hideColumnHeader: false, keyboardShortcuts: false },
   };
 
   // -----------------------------------------
@@ -530,6 +530,7 @@
   const themeSelect = document.getElementById('theme-select');
   const hideAdsToggle = document.getElementById('hide-ads-toggle');
   const hideColHeaderToggle = document.getElementById('hide-col-header-toggle');
+  const keyboardShortcutsToggle = document.getElementById('keyboard-shortcuts-toggle');
 
   // Column activation is now handled per-column by attachColumnInteractionListeners()
 
@@ -1008,6 +1009,7 @@
           type: 'tweetdeckx-init',
           hideAds: state.settings.hideAds,
           hideColumnHeader: state.settings.hideColumnHeader && col.type !== 'search',
+          keyboardShortcuts: state.settings.keyboardShortcuts,
         }, '*');
         iframe.contentWindow.postMessage({
           type: 'tweetdeckx-set-column-width',
@@ -1059,6 +1061,17 @@
           enabled: effective,
         }, '*');
       } catch (e) { /* Cross-origin — content script handles it */ }
+    });
+  }
+
+  function broadcastKeyboardShortcuts() {
+    document.querySelectorAll('.column-frame').forEach(iframe => {
+      try {
+        iframe.contentWindow.postMessage({
+          type: 'tweetdeckx-set-keyboard-shortcuts',
+          enabled: state.settings.keyboardShortcuts,
+        }, '*');
+      } catch (e) { /* Cross-origin, content script handles it */ }
     });
   }
 
@@ -2007,6 +2020,7 @@
     themeSelect.value = state.settings.theme;
     hideAdsToggle.checked = state.settings.hideAds;
     hideColHeaderToggle.checked = state.settings.hideColumnHeader;
+    keyboardShortcutsToggle.checked = state.settings.keyboardShortcuts;
     settingsOverlay.classList.remove('hidden');
   });
 
@@ -2048,6 +2062,13 @@
     broadcastHideColumnHeader();
   });
 
+  keyboardShortcutsToggle.addEventListener('change', () => {
+    state.settings.keyboardShortcuts = keyboardShortcutsToggle.checked;
+    saveState();
+    broadcastKeyboardShortcuts();
+    if (!state.settings.keyboardShortcuts) markKeyboardFocus(null);
+  });
+
   document.getElementById('btn-reset-pages').addEventListener('click', () => {
     if (confirm('Reset all pages? This will remove all pages and columns and cannot be undone.')) {
       deactivateActiveColumn();
@@ -2078,6 +2099,132 @@
       if (!settingsOverlay.classList.contains('hidden')) closeSettingsModal();
       if (!pageModalOverlay.classList.contains('hidden')) closePageModal();
       closeAllDropdowns();
+    }
+  });
+
+  // Navigation shortcuts (opt-in via settings). The keymap lives in
+  // shortcuts.js. Keys pressed while a column's iframe has focus never reach
+  // this document, so the content script forwards those as
+  // 'tweetdeckx-shortcut' messages instead.
+
+  function getActiveColumnEls() {
+    const wrapper = getActiveWrapper();
+    return wrapper ? [...wrapper.querySelectorAll('.deck-column')] : [];
+  }
+
+  // The column shortcuts pressed on the deck itself act on: the one with
+  // keyboard focus, falling back to the active (hovered) column.
+  function getCurrentColumnEl() {
+    const wrapper = getActiveWrapper();
+    if (!wrapper) return null;
+    return wrapper.querySelector('.deck-column.keyboard-focus')
+      || (activeColumnId && wrapper.querySelector(`.deck-column[data-id="${activeColumnId}"]`))
+      || null;
+  }
+
+  function findColumnElForSource(source) {
+    for (const iframe of columnsContainer.querySelectorAll('iframe')) {
+      if (iframe.contentWindow === source) return iframe.closest('.deck-column');
+    }
+    return null;
+  }
+
+  function markKeyboardFocus(colEl) {
+    columnsContainer.querySelectorAll('.deck-column.keyboard-focus').forEach((el) => {
+      if (el !== colEl) el.classList.remove('keyboard-focus');
+    });
+    if (colEl) colEl.classList.add('keyboard-focus');
+  }
+
+  function focusColumn(colEl) {
+    if (!colEl) return;
+    markKeyboardFocus(colEl);
+    colEl.scrollIntoView({ behavior: 'smooth', inline: 'nearest', block: 'nearest' });
+    // Moving focus into the iframe lets X.com's own shortcuts (j/k, l, ...)
+    // work in this column straight away.
+    const iframe = colEl.querySelector('iframe');
+    if (iframe) iframe.focus();
+    activateColumn(colEl.dataset.id);
+  }
+
+  // Modals take keyboard input on the deck page, so hand focus back from
+  // whichever iframe has it before opening one.
+  function releaseIframeFocus() {
+    const el = document.activeElement;
+    if (el && el.tagName === 'IFRAME') el.blur();
+  }
+
+  function isShortcutBlocked() {
+    return !!lightboxIframe || !!document.querySelector('.modal-overlay:not(.hidden)');
+  }
+
+  function runShortcut(action, colEl) {
+    closeAllDropdowns();
+    const columns = getActiveColumnEls();
+    switch (action.type) {
+      case 'focus-column':
+        focusColumn(columns[action.index]);
+        break;
+      case 'focus-prev-column':
+      case 'focus-next-column': {
+        const step = action.type === 'focus-next-column' ? 1 : -1;
+        const current = columns.indexOf(colEl);
+        // Without a current column, start from the first or last one
+        const target = current === -1 ? (step > 0 ? 0 : columns.length - 1) : current + step;
+        focusColumn(columns[target]);
+        break;
+      }
+      case 'switch-page': {
+        const page = state.pages[action.index];
+        if (page) switchPage(page.id);
+        break;
+      }
+      case 'back': {
+        // Same condition as the header's back button, so we never step back
+        // past the column's own start page
+        const backBtn = colEl && colEl.querySelector('.col-back');
+        if (backBtn && backBtn.style.display !== 'none') backBtn.click();
+        break;
+      }
+      case 'add-column':
+        releaseIframeFocus();
+        openAddColumnModal();
+        modalOverlay.querySelector('.type-card').focus();
+        break;
+      case 'add-page':
+        releaseIframeFocus();
+        openPageModal('create');
+        break;
+    }
+  }
+
+  document.addEventListener('keydown', (e) => {
+    if (!state.settings.keyboardShortcuts || isShortcutBlocked()) return;
+    const action = window.TweetDeckXShortcuts.match(e);
+    if (!action) return;
+    e.preventDefault();
+    runShortcut(action, getCurrentColumnEl());
+  });
+
+  window.addEventListener('message', (e) => {
+    if (!e.data || e.data.type !== 'tweetdeckx-shortcut') return;
+    if (!state.settings.keyboardShortcuts || isShortcutBlocked()) return;
+    const action = e.data.action;
+    if (!action || typeof action.type !== 'string') return;
+    if ('index' in action && !Number.isInteger(action.index)) return;
+    const colEl = findColumnElForSource(e.source);
+    if (colEl) runShortcut(action, colEl);
+  });
+
+  window.addEventListener('message', (e) => {
+    if (!e.data || e.data.type !== 'tweetdeckx-frame-focus') return;
+    if (!state.settings.keyboardShortcuts) return;
+    const colEl = findColumnElForSource(e.source);
+    if (!colEl) return;
+    if (e.data.focused) {
+      markKeyboardFocus(colEl);
+    } else {
+      colEl.classList.remove('keyboard-focus');
     }
   });
 
