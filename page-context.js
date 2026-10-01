@@ -32,6 +32,7 @@
   } catch (e) {}
 
   var _paused = false;
+  var _suppressActivityUntil = 0;
   var _origPushState = history.pushState;
   var _origReplaceState = history.replaceState;
 
@@ -232,9 +233,9 @@
   // a full reload when it did not.
   function refreshInPlace() {
     var before = _lastTimelineRequestAt;
+    _suppressActivityUntil = Date.now() + 3000;
     try { window.scrollTo(0, 0); } catch (e) {}
     try { if (document.scrollingElement) document.scrollingElement.scrollTop = 0; } catch (e) {}
-    emitWindowEvent('focus');
     // X binds "." with a Mousetrap-style handler, which listens for the
     // keypress of single character keys, so send the full keydown /
     // keypress / keyup sequence with the legacy code fields filled in.
@@ -255,6 +256,7 @@
   // deck can fall back to a reload when the route did not take.
   function navigateInPlace(url) {
     var before = _lastTimelineRequestAt;
+    _suppressActivityUntil = Date.now() + 3000;
     try {
       _origPushState.call(history, {}, '', url);
       window.dispatchEvent(new PopStateEvent('popstate', { state: {} }));
@@ -344,6 +346,9 @@
   var _lastActivityNotify = 0;
   function notifyActivity(e) {
     if (e && !e.isTrusted) return; // synthetic events from refreshInPlace don't count
+    // A script scroll fires a trusted scroll event, so scrolls right after
+    // an in-place refresh or navigation don't count either
+    if (e && e.type === 'scroll' && Date.now() < _suppressActivityUntil) return;
     var now = Date.now();
     if (now - _lastActivityNotify > 5000) {
       _lastActivityNotify = now;
