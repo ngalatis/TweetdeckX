@@ -146,13 +146,13 @@ const API_URLS = [
   'https://x.com/i/api/*',
   'https://api.x.com/*',
   'https://twitter.com/i/api/*',
-  'https://api.twitter.com/*',
 ];
 
 let rateLimits = {}; // op -> { limit, remaining, reset (unix seconds), at (ms) }
 let rateLimitsLoaded = chrome.storage.session
   ? chrome.storage.session.get([RATE_LIMIT_STORAGE_KEY]).then((data) => {
-      if (data && data[RATE_LIMIT_STORAGE_KEY]) rateLimits = data[RATE_LIMIT_STORAGE_KEY];
+      // Headers may already have arrived while the read was in flight
+      if (data && data[RATE_LIMIT_STORAGE_KEY]) rateLimits = Object.assign({}, data[RATE_LIMIT_STORAGE_KEY], rateLimits);
     }).catch(() => {})
   : Promise.resolve();
 
@@ -188,18 +188,17 @@ function broadcastRateLimits() {
 }
 
 // Parses X's backoff-policy header into milliseconds the deck should hold
-// off for. Mirrors the client's own caps: backoff up to 10s, serialised
-// mode up to 10 minutes.
+// off for. Only the "backoff" field is a stop (capped at 10s like X's own
+// client); "serial-duration" asks the client to serialise requests, which
+// the deck's staggered loading already does.
 function parseBackoffPolicy(value) {
   let backoffMs = 0;
-  let serialMs = 0;
   value.split(';').forEach((part) => {
     const [k, v] = part.split('=').map((x) => (x || '').trim().toLowerCase());
     const n = parseInt(v, 10);
     if (k === 'backoff' && n > 0) backoffMs = Math.min(n, 10000);
-    if (k === 'serial-duration' && n > 0) serialMs = Math.min(n, 600000);
   });
-  return { backoffMs, serialMs };
+  return { backoffMs };
 }
 
 chrome.webRequest.onHeadersReceived.addListener(
@@ -222,10 +221,9 @@ chrome.webRequest.onHeadersReceived.addListener(
 
     const backoff = headerValue(headers, 'backoff-policy');
     if (backoff) {
-      const { backoffMs, serialMs } = parseBackoffPolicy(backoff);
-      const ms = Math.max(backoffMs, serialMs);
-      if (ms > 0) {
-        chrome.runtime.sendMessage({ type: 'tweetdeckx-backoff', ms, op }).catch(() => {});
+      const { backoffMs } = parseBackoffPolicy(backoff);
+      if (backoffMs > 0) {
+        chrome.runtime.sendMessage({ type: 'tweetdeckx-backoff', ms: backoffMs, op }).catch(() => {});
       }
     }
 
