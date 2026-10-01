@@ -131,21 +131,116 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 // }
 
 // -------------------------------------------------------
-// Rate limit (429) detection
+// Rate limit tracking
 // -------------------------------------------------------
-// Monitor responses from X.com for 429 status codes.
-// When detected, notify the deck page so it can pause loading
-// and warn the user.
+// Every X API response carries x-rate-limit-limit / -remaining / -reset
+// (per user, per endpoint, 15 minute windows). Some responses also carry a
+// backoff-policy header ("backoff=<ms>;serial-duration=<ms>;...") that X's
+// own client obeys per host. Both are observed here, kept per GraphQL
+// operation, and pushed to the deck so it can budget column loads and
+// refreshes instead of guessing. On a 429 the deck is told exactly which
+// endpoint tripped and when its window resets.
 
-chrome.webRequest.onCompleted.addListener(
+const RATE_LIMIT_STORAGE_KEY = 'tweetdeckx_rate_limits';
+const API_URLS = [
+  'https://x.com/i/api/*',
+  'https://api.x.com/*',
+  'https://twitter.com/i/api/*',
+  'https://api.twitter.com/*',
+];
+
+let rateLimits = {}; // op -> { limit, remaining, reset (unix seconds), at (ms) }
+let rateLimitsLoaded = chrome.storage.session
+  ? chrome.storage.session.get([RATE_LIMIT_STORAGE_KEY]).then((data) => {
+      if (data && data[RATE_LIMIT_STORAGE_KEY]) rateLimits = data[RATE_LIMIT_STORAGE_KEY];
+    }).catch(() => {})
+  : Promise.resolve();
+
+// Maps a request URL to the name the budget is kept under: the GraphQL
+// operation name, or the REST path for everything else.
+function operationForUrl(url) {
+  const m = /\/graphql\/[^/]+\/([A-Za-z0-9_]+)/.exec(url);
+  if (m) return m[1];
+  try {
+    const path = new URL(url).pathname;
+    return path.replace(/^\/i\/api\//, '/').replace(/\.json$/, '');
+  } catch (e) {
+    return null;
+  }
+}
+
+function headerValue(headers, name) {
+  const h = headers.find((x) => x.name.toLowerCase() === name);
+  return h ? h.value : null;
+}
+
+let broadcastTimer = null;
+function broadcastRateLimits() {
+  clearTimeout(broadcastTimer);
+  broadcastTimer = setTimeout(() => {
+    if (chrome.storage.session) {
+      chrome.storage.session.set({ [RATE_LIMIT_STORAGE_KEY]: rateLimits }).catch(() => {});
+    }
+    chrome.runtime.sendMessage({ type: 'tweetdeckx-rate-limits', limits: rateLimits }).catch(() => {
+      // Deck page may not be open — ignore
+    });
+  }, 500);
+}
+
+// Parses X's backoff-policy header into milliseconds the deck should hold
+// off for. Mirrors the client's own caps: backoff up to 10s, serialised
+// mode up to 10 minutes.
+function parseBackoffPolicy(value) {
+  let backoffMs = 0;
+  let serialMs = 0;
+  value.split(';').forEach((part) => {
+    const [k, v] = part.split('=').map((x) => (x || '').trim().toLowerCase());
+    const n = parseInt(v, 10);
+    if (k === 'backoff' && n > 0) backoffMs = Math.min(n, 10000);
+    if (k === 'serial-duration' && n > 0) serialMs = Math.min(n, 600000);
+  });
+  return { backoffMs, serialMs };
+}
+
+chrome.webRequest.onHeadersReceived.addListener(
   (details) => {
+    const headers = details.responseHeaders || [];
+    const op = operationForUrl(details.url);
+    const limit = headerValue(headers, 'x-rate-limit-limit');
+    const remaining = headerValue(headers, 'x-rate-limit-remaining');
+    const reset = headerValue(headers, 'x-rate-limit-reset');
+
+    if (op && limit !== null && remaining !== null && reset !== null) {
+      rateLimits[op] = {
+        limit: Number(limit),
+        remaining: Number(remaining),
+        reset: Number(reset),
+        at: Date.now(),
+      };
+      broadcastRateLimits();
+    }
+
+    const backoff = headerValue(headers, 'backoff-policy');
+    if (backoff) {
+      const { backoffMs, serialMs } = parseBackoffPolicy(backoff);
+      const ms = Math.max(backoffMs, serialMs);
+      if (ms > 0) {
+        chrome.runtime.sendMessage({ type: 'tweetdeckx-backoff', ms, op }).catch(() => {});
+      }
+    }
+
     if (details.statusCode === 429) {
-      chrome.runtime.sendMessage({ type: 'tweetdeckx-rate-limited' }).catch(() => {
+      chrome.runtime.sendMessage({
+        type: 'tweetdeckx-rate-limited',
+        op,
+        reset: reset !== null ? Number(reset) : null,
+      }).catch(() => {
         // Deck page may not be open — ignore
       });
     }
   },
-  { urls: ['https://x.com/*', 'https://api.x.com/*'] }
+  { urls: API_URLS },
+  ['responseHeaders']
 );
 
 // -------------------------------------------------------
@@ -199,9 +294,14 @@ setTimeout(checkForUpdate, 10000);
 // Check periodically
 setInterval(checkForUpdate, UPDATE_CHECK_INTERVAL);
 
-// Allow the deck page to request an update check on demand
+// Allow the deck page to request an update check on demand, and to read
+// the rate-limit table when it opens
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg.type === 'tweetdeckx-check-update') {
     checkForUpdate();
+  }
+  if (msg.type === 'tweetdeckx-get-rate-limits') {
+    rateLimitsLoaded.then(() => sendResponse(rateLimits));
+    return true; // Keep channel open for async response
   }
 });

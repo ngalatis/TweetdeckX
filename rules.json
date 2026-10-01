@@ -235,5 +235,53 @@
       "urlFilter": "dm/user_updates.json",
       "resourceTypes": ["xmlhttprequest"]
     }
+  },
+  {
+    "id": 11,
+    "priority": 3,
+    "action": {
+      "type": "redirect",
+      "redirect": { "extensionPath": "/stub.json" }
+    },
+    "condition": {
+      "urlFilter": "jot/client_event.json",
+      "resourceTypes": ["xmlhttprequest", "ping", "other"]
+    }
+  },
+  {
+    "id": 12,
+    "priority": 3,
+    "action": {
+      "type": "redirect",
+      "redirect": { "extensionPath": "/stub.json" }
+    },
+    "condition": {
+      "urlFilter": "jot/error_log",
+      "resourceTypes": ["xmlhttprequest", "ping", "other"]
+    }
+  },
+  {
+    "id": 13,
+    "priority": 3,
+    "action": {
+      "type": "redirect",
+      "redirect": { "extensionPath": "/stub.json" }
+    },
+    "condition": {
+      "urlFilter": "graphql/app_context",
+      "resourceTypes": ["xmlhttprequest", "ping", "other"]
+    }
+  },
+  {
+    "id": 14,
+    "priority": 3,
+    "action": {
+      "type": "redirect",
+      "redirect": { "extensionPath": "/stub.json" }
+    },
+    "condition": {
+      "urlFilter": "graphql/viewer_context",
+      "resourceTypes": ["xmlhttprequest", "ping", "other"]
+    }
   }
 ]
