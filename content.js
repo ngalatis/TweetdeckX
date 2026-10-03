@@ -7,6 +7,9 @@
   // Only apply in iframe context (not when user visits x.com normally)
   if (window === window.top) return;
 
+  // Pause/resume, in-place refresh and navigation are handled by
+  // page-context.js (MAIN world), which listens for the same messages.
+
   // -------------------------------------------------------
   // PHASE 1b: Inject first-party cookies into this iframe
   // -------------------------------------------------------
@@ -67,6 +70,13 @@
     }
     // Forward lightbox open/close to deck page so it can expand the iframe
     if (e.data && (e.data.type === 'tweetdeckx-lightbox-opened' || e.data.type === 'tweetdeckx-lightbox-closed')) {
+      try { window.parent.postMessage(e.data, '*'); } catch (err) {}
+    }
+    // Forward the outcome of an in-place refresh or navigation so the deck
+    // knows whether to fall back to a full reload, and the rate-limit
+    // headers of each API response so it knows this column's budget
+    if (e.data && (e.data.type === 'tweetdeckx-refresh-result' || e.data.type === 'tweetdeckx-navigate-result'
+      || e.data.type === 'tweetdeckx-api-response')) {
       try { window.parent.postMessage(e.data, '*'); } catch (err) {}
     }
   });
@@ -333,11 +343,13 @@
     } catch (err) {}
   }, true);
 
-  window.addEventListener('focus', () => {
-    if (keyboardShortcutsEnabled) notifyFocus(true);
+  // page-context.js dispatches synthetic focus/blur events when it pauses
+  // or refreshes the column; only real focus changes are reported.
+  window.addEventListener('focus', (e) => {
+    if (keyboardShortcutsEnabled && e.isTrusted) notifyFocus(true);
   });
 
-  window.addEventListener('blur', () => {
-    if (keyboardShortcutsEnabled) notifyFocus(false);
+  window.addEventListener('blur', (e) => {
+    if (keyboardShortcutsEnabled && e.isTrusted) notifyFocus(false);
   });
 })();

@@ -54,9 +54,20 @@ Keyboard shortcuts are off by default. Turn them on in **Settings**.
 
 Once a column has focus, X's own shortcuts work inside it, such as `j` / `k` to move between posts, `Enter` to open a post, `l` to like, `r` to reply and `t` to repost. Press `?` inside a column for X's full list. Shortcuts are ignored while you are typing in a text field.
 
+## Rate limits
+
+X rate limits its own website per user and per endpoint, in 15 minute windows. Search is the tightest: roughly 50 timeline fetches per window, shared by every search column you have open. TweetDeckX works inside those limits instead of hoping for the best:
+
+- **Only the column under your pointer is awake.** Every other column is made to look like a hidden browser tab, so X's own client stops its badge and message polling, suspends its live event stream and tells X the user is inactive. This uses X's own code paths rather than fighting them. Waking a column only flips it back to visible; no focus event is faked, because X refetches Home on every focus.
+- **Refreshes happen in place.** A refresh calls X's own timeline component to load new posts, which is one request, instead of reloading the whole page, which is twenty or more. Changing a column's view (toggling replies, clearing a search) goes through X's router the same way a link click does. X's `.` shortcut is the fallback, and a page reload the last resort, each only when the step before it demonstrably fetched nothing.
+- **Background refreshes follow X Pro's own policy.** Columns on screen refresh about every 5 minutes. Columns just off screen refresh half as often, columns further away a tenth as often, and columns on other pages not at all until you switch back, when any older than a refresh interval catch up one at a time.
+- **The deck knows its budget.** Every X response carries `x-rate-limit-remaining` and `x-rate-limit-reset` headers. Each column reads them off its own responses, so the deck knows which endpoint a column actually spends on, shows the remaining calls on its header (for example `12/50`, hover for details), and will not load or refresh it when that endpoint has fewer than 3 calls left. Columns that have to wait say so and load themselves when the window resets.
+- **A 429 pauses exactly as long as X says.** A toast names the endpoint and the reset time X sent, and the column header shows `0/50` until then. X's `backoff-policy` header is honoured across all columns too.
+- **Telemetry is stubbed.** X's client event, error log and app context beacons are answered locally so they never count against you.
+
 ## Known Issues
 
-- X likes to rate limit the shit out of its normal users. Since we're using the simplest form of X timeline we can sometimes hit those rate limits. I'm trying to mitigate this as best as I can but you should be aware if you are a power user with a shit ton of columns.
+- Rate limits are per account, so other x.com tabs and apps using the same account share the same budget. The deck can see them but can't stop them.
 
 
 ## Permissions
@@ -69,7 +80,7 @@ TweetDeckX requests only the permissions it needs to function. Here's exactly wh
 | `cookies` | Read your X.com session cookies so the embedded columns can authenticate. Without this, X.com would show "Please log in" in every column. Cookies are only read for `x.com` — never for any other site. |
 | `declarativeNetRequest` | Strip X.com's `X-Frame-Options` and `Content-Security-Policy` headers so X.com pages can load inside iframes. Also spoofs `Sec-Fetch-*` headers so X.com's servers don't block the embedded pages. |
 | `declarativeNetRequestFeedback` | Debug logging for the header rules above — helps diagnose issues when columns fail to load. |
-| `webRequest` | Detect when X.com returns 429 (rate limit) responses so we can pause loading and warn you instead of hammering their servers. Read-only — we never modify or block any requests. |
+| `webRequest` | Read the `x-rate-limit-*` and `backoff-policy` headers on X.com responses, and detect 429s, so the deck can budget column loads and pause for exactly as long as X asks. Read-only — we never modify or block any requests. |
 | Host permissions (`x.com`, `twitter.com`, `twimg.com`, `api.x.com`) | Required for the above permissions to apply to X.com's domains. Without these, Chrome wouldn't let us read cookies, modify headers, or monitor responses for those sites. |
 
 **What we don't do:** No data collection, no analytics, no external servers, no tracking. Everything runs locally in your browser.

@@ -311,7 +311,94 @@
   // -----------------------------------------
 
   let pendingStaggerTimers = [];
-  let isRateLimited = false;
+
+  // Rate-limit budget, reported by background.js from X's own
+  // x-rate-limit-* and backoff-policy response headers. Limits are per
+  // user and per endpoint, in 15 minute windows, so every column that hits
+  // the same endpoint shares one budget.
+  const rateLimits = {};        // op -> { limit, remaining, reset (unix s), at (ms) }
+  const columnOps = new Map();  // Map<columnId, Set<op>> endpoints a column has actually fetched its posts from
+  let rateLimitedUntil = 0;     // ms; from a 429 with no identifiable endpoint
+  let backoffUntil = 0;         // ms; from a backoff-policy header
+  let lastRateLimitToastKey = null; // "op:reset" of the last 429 shown, so one 429 makes one toast
+  let deferredLoadTimer = null;  // retry for columns waiting on a budget
+  let budgetIndicatorTimer = null;
+  const BUDGET_RESERVE = 3;     // calls per endpoint kept back for the user's own clicks
+
+  function isThrottled() {
+    return Date.now() < Math.max(rateLimitedUntil, backoffUntil);
+  }
+
+  // Top-level paths that are X features rather than user profiles
+  const RESERVED_PATHS = new Set([
+    'home', 'explore', 'search', 'notifications', 'messages', 'compose', 'settings',
+    'i', 'premium', 'premium_sign_up', 'login', 'logout', 'jobs', 'communities',
+    'lists', 'grok', 'account', 'intent', 'hashtag', 'places', 'who_to_follow',
+    'tos', 'privacy', 'about', 'download', 'verified', 'business', 'help',
+  ]);
+
+  // GraphQL operations a column spends when it loads or refreshes, derived
+  // from the URL it shows so saved views and custom URLs are covered too.
+  function operationsForUrl(url) {
+    let u;
+    try { u = new URL(url); } catch (e) { return []; }
+    const p = u.pathname.replace(/\/$/, '');
+    if (p === '/home') return ['HomeTimeline', 'HomeLatestTimeline'];
+    if (p === '/search') return ['SearchTimeline'];
+    if (p === '/explore' || p.startsWith('/explore/')) return ['ExplorePage'];
+    if (p === '/notifications' || p.startsWith('/notifications/')) return ['NotificationsTimeline'];
+    if (p === '/i/bookmarks' || p.startsWith('/i/bookmarks/')) return ['Bookmarks'];
+    if (/^\/i\/lists\/\d+/.test(p)) return ['ListLatestTweetsTimeline'];
+    if (/^\/[A-Za-z0-9_]+\/likes$/.test(p)) return ['Likes'];
+    if (/^\/[A-Za-z0-9_]+\/media$/.test(p)) return ['UserMedia'];
+    if (/^\/[A-Za-z0-9_]+\/with_replies$/.test(p)) return ['UserTweetsAndReplies'];
+    if (/^\/[A-Za-z0-9_]+\/status\/\d+/.test(p)) return ['TweetDetail'];
+    const first = p.split('/')[1] || '';
+    if (/^[A-Za-z0-9_]+$/.test(first) && !RESERVED_PATHS.has(first.toLowerCase())) {
+      if (/^\/[A-Za-z0-9_]+$/.test(p)) return ['UserTweets'];
+    }
+    return [];
+  }
+
+  // Endpoints a column spends on: the ones its frame has been seen fetching
+  // posts from, plus the guess from its URL until that happens.
+  function opsForColumn(col) {
+    const ops = new Set(columnOps.get(col.id) || []);
+    operationsForUrl(getCanonicalUrl(col)).forEach((op) => ops.add(op));
+    return ops;
+  }
+
+  // The tightest known budget among a column's endpoints, or null when X
+  // hasn't reported on them yet or the window has already reset.
+  function budgetFor(col) {
+    let worst = null;
+    for (const op of opsForColumn(col)) {
+      const b = rateLimits[op];
+      if (!b || b.reset * 1000 <= Date.now()) continue;
+      if (!worst || b.remaining < worst.remaining) worst = { op, ...b };
+    }
+    return worst;
+  }
+
+  function canSpend(col) {
+    if (isThrottled()) return false;
+    const b = budgetFor(col);
+    return !b || b.remaining > BUDGET_RESERVE;
+  }
+
+  // Milliseconds until the column may spend again, or 0 if it can now.
+  function waitFor(col) {
+    let until = Math.max(rateLimitedUntil, backoffUntil);
+    const b = budgetFor(col);
+    if (b && b.remaining <= BUDGET_RESERVE) until = Math.max(until, b.reset * 1000 + 1000);
+    return Math.max(0, until - Date.now());
+  }
+
+  function formatWait(ms) {
+    const sec = Math.ceil(ms / 1000);
+    if (sec < 60) return `${sec}s`;
+    return `${Math.floor(sec / 60)}m ${sec % 60}s`;
+  }
 
   function cancelPendingLoads() {
     pendingStaggerTimers.forEach(id => clearTimeout(id));
@@ -324,7 +411,11 @@
 
   let activeColumnId = null;       // which column is currently Active (resumed)
   let idleTimer = null;            // timer to pause the active column after inactivity
-  let refreshTimers = new Map();   // Map<columnId, timerId> for 5-min lazy refresh
+  let refreshTimers = new Map();   // Map<columnId, timeoutId> for the background refresh cycle
+  const lastRefreshAt = new Map(); // Map<columnId, ms> when the column last loaded or refreshed
+  const pendingRefreshes = new Map();   // Map<columnId, (ok) => void> awaiting tweetdeckx-refresh-result
+  const pendingNavigations = new Map(); // Map<columnId, (ok) => void> awaiting tweetdeckx-navigate-result
+  const refreshFailures = new Map();    // Map<columnId, consecutive in-place refreshes that fetched nothing>
 
   // Per-column runtime state that is NOT persisted. Populated as iframes
   // report their current URL via the 'tweetdeckx-url-changed' message and
@@ -351,8 +442,13 @@
   }
 
   const IDLE_TIMEOUT = 45000;      // 45 seconds of no mouse activity → pause
-  const REFRESH_INTERVAL = 300000; // 5 minutes between lazy refreshes
-  const RESUME_BURST_MS = 3000;    // how long a brief resume-then-pause lasts
+  const REFRESH_INTERVAL = 300000; // 5 minutes between background refreshes (±20% jitter)
+  const RESUME_BURST_MS = 3000;    // how long a column stays visible after loading
+  const HOVER_ACTIVATE_MS = 400;   // pointer must rest on a column this long to activate it
+  // A page switch catches up columns the background cycle would have
+  // refreshed by now. Anything shorter spends extra on every switch, which
+  // adds up fast against search's 50 calls per window.
+  const STALE_AFTER_MS = REFRESH_INTERVAL;
 
   function pauseAllIframes() {
     columnsContainer.querySelectorAll('iframe').forEach(function (iframe) {
@@ -363,9 +459,7 @@
   }
 
   function pauseColumn(colId) {
-    const wrapper = getActiveWrapper();
-    if (!wrapper) return;
-    const col = wrapper.querySelector(`.deck-column[data-id="${colId}"]`);
+    const col = columnsContainer.querySelector(`.deck-column[data-id="${colId}"]`);
     if (!col) return;
     const iframe = col.querySelector('iframe');
     if (iframe) {
@@ -374,9 +468,7 @@
   }
 
   function resumeColumn(colId) {
-    const wrapper = getActiveWrapper();
-    if (!wrapper) return;
-    const col = wrapper.querySelector(`.deck-column[data-id="${colId}"]`);
+    const col = columnsContainer.querySelector(`.deck-column[data-id="${colId}"]`);
     if (!col) return;
     const iframe = col.querySelector('iframe');
     if (iframe) {
@@ -391,7 +483,8 @@
     activeColumnId = colId;
     resumeColumn(colId);
     resetIdleTimer();
-    resetRefreshTimer(colId);
+    const colEl = columnsContainer.querySelector(`.deck-column[data-id="${colId}"]`);
+    if (colEl && colEl.querySelector('iframe')) resetRefreshTimer(colId);
   }
 
   function deactivateActiveColumn() {
@@ -414,13 +507,35 @@
     idleTimer = null;
   }
 
-  function burstResumeColumn(colId) {
-    resumeColumn(colId);
-    setTimeout(() => {
-      if (activeColumnId !== colId) {
-        pauseColumn(colId);
-      }
-    }, RESUME_BURST_MS);
+  // Background refresh for columns the user isn't interacting with. Each
+  // cycle asks the frame for an in-place refresh (one timeline request)
+  // while it stays paused, so X's badge and DM pollers never wake up.
+  // Mirrors X Pro's own off-screen column policy: columns on screen always
+  // refresh, columns within two widths of the viewport refresh half the
+  // time, anything further a tenth of the time.
+  function skipProbabilityFor(colEl) {
+    const vp = columnsContainer.getBoundingClientRect();
+    const r = colEl.getBoundingClientRect();
+    if (r.width === 0) return 1;
+    if (r.right > vp.left && r.left < vp.right) return 0;
+    const dist = r.left >= vp.right ? r.left - vp.right : vp.left - r.right;
+    return dist < 2 * r.width ? 0.5 : 0.9;
+  }
+
+  function backgroundRefresh(colId) {
+    if (colId === activeColumnId) return;
+    const col = findColumn(colId);
+    const colEl = columnsContainer.querySelector(`.page-wrapper:not(.hidden) .deck-column[data-id="${colId}"]`);
+    if (!col || !colEl || !colEl.querySelector('iframe')) return;
+    if (Math.random() < skipProbabilityFor(colEl)) return;
+    // A route where X's "." shortcut fetches nothing would otherwise never
+    // refresh, so after three empty attempts a reload is allowed once
+    const stuck = (refreshFailures.get(colId) || 0) >= 3;
+    refreshColumn(col, { allowReload: stuck });
+  }
+
+  function jitteredInterval() {
+    return REFRESH_INTERVAL * (0.8 + Math.random() * 0.4);
   }
 
   function startRefreshTimers() {
@@ -433,33 +548,150 @@
     page.columns.forEach((col) => {
       const colEl = wrapper.querySelector(`.deck-column[data-id="${col.id}"]`);
       if (!colEl || !colEl.querySelector('iframe')) return;
-
-      const timerId = setInterval(() => {
-        if (col.id !== activeColumnId) {
-          burstResumeColumn(col.id);
-        }
-      }, REFRESH_INTERVAL);
-      refreshTimers.set(col.id, timerId);
+      resetRefreshTimer(col.id);
     });
   }
 
   function resetRefreshTimer(colId) {
+    clearRefreshTimer(colId);
+    const tick = () => {
+      backgroundRefresh(colId);
+      refreshTimers.set(colId, setTimeout(tick, jitteredInterval()));
+    };
+    refreshTimers.set(colId, setTimeout(tick, jitteredInterval()));
+  }
+
+  function clearRefreshTimer(colId) {
     const existing = refreshTimers.get(colId);
-    if (existing) {
-      clearInterval(existing);
-    }
-    const timerId = setInterval(() => {
-      if (colId !== activeColumnId) {
-        burstResumeColumn(colId);
-      }
-    }, REFRESH_INTERVAL);
-    refreshTimers.set(colId, timerId);
+    if (existing) clearTimeout(existing);
+    refreshTimers.delete(colId);
   }
 
   function clearAllRefreshTimers() {
-    refreshTimers.forEach((timerId) => clearInterval(timerId));
+    refreshTimers.forEach((timerId) => clearTimeout(timerId));
     refreshTimers.clear();
   }
+
+  // Refreshes a loaded column. Asks the frame to load new posts in place
+  // (X's own timeline component, one timeline request); only if the frame
+  // reports that nothing was fetched, and reloading is allowed, is the page
+  // reloaded. Respects the endpoint budget either way.
+  function refreshColumn(col, { allowReload = true } = {}) {
+    const colEl = columnsContainer.querySelector(`.deck-column[data-id="${col.id}"]`);
+    const iframe = colEl && colEl.querySelector('iframe');
+    if (!iframe) return Promise.resolve(false);
+    if (!canSpend(col)) {
+      updateBudgetIndicators();
+      return Promise.resolve(false);
+    }
+    supersedePending(pendingRefreshes, col.id);
+    const refreshBtn = colEl.querySelector('[data-action="refresh"]');
+    if (refreshBtn) refreshBtn.classList.add('refreshing');
+    return new Promise((resolve) => {
+      let timer = null;
+      const finish = (ok, superseded) => {
+        clearTimeout(timer);
+        if (pendingRefreshes.get(col.id) === finish) pendingRefreshes.delete(col.id);
+        resolve(superseded ? null : ok);
+      };
+      // The frame answers within 1.5s; the margin covers message delivery
+      timer = setTimeout(() => finish(false), 3000);
+      pendingRefreshes.set(col.id, finish);
+      try {
+        iframe.contentWindow.postMessage({ type: 'tweetdeckx-refresh' }, '*');
+      } catch (e) {
+        finish(false);
+      }
+    }).then((ok) => {
+      if (refreshBtn && ok !== null) refreshBtn.classList.remove('refreshing');
+      if (ok === null) return false; // a newer request for this column took over
+      if (ok) {
+        lastRefreshAt.set(col.id, Date.now());
+        refreshFailures.delete(col.id);
+        return true;
+      }
+      refreshFailures.set(col.id, (refreshFailures.get(col.id) || 0) + 1);
+      if (!allowReload || !iframe.isConnected) return false;
+      lastRefreshAt.set(col.id, Date.now());
+      refreshFailures.delete(col.id);
+      iframe.src = getCanonicalUrl(col);
+      return true;
+    });
+  }
+
+  // Cancels an earlier refresh or navigation still waiting on the same
+  // column so its timeout can't trigger a stale fallback reload.
+  function supersedePending(map, colId) {
+    const prev = map.get(colId);
+    if (prev) prev(false, true);
+  }
+
+  // Points a loaded column at a new URL through X's router rather than a
+  // page reload. Falls back to a reload if the frame reports no fetch.
+  function navigateColumn(col, url) {
+    const colEl = columnsContainer.querySelector(`.deck-column[data-id="${col.id}"]`);
+    const iframe = colEl && colEl.querySelector('iframe');
+    if (!iframe) return;
+    supersedePending(pendingNavigations, col.id);
+    let timer = null;
+    const finish = (ok, superseded) => {
+      clearTimeout(timer);
+      if (pendingNavigations.get(col.id) === finish) pendingNavigations.delete(col.id);
+      if (superseded) return;
+      lastRefreshAt.set(col.id, Date.now());
+      if (!ok && iframe.isConnected) iframe.src = url;
+    };
+    // The frame answers within 1.2s; the margin covers message delivery
+    timer = setTimeout(() => finish(false), 2500);
+    pendingNavigations.set(col.id, finish);
+    try {
+      iframe.contentWindow.postMessage({ type: 'tweetdeckx-navigate', url }, '*');
+    } catch (e) {
+      finish(false);
+    }
+  }
+
+  window.addEventListener('message', (e) => {
+    if (!e.data) return;
+    const isRefresh = e.data.type === 'tweetdeckx-refresh-result';
+    const isNav = e.data.type === 'tweetdeckx-navigate-result';
+    if (!isRefresh && !isNav) return;
+    const colEl = findColumnElForSource(e.source);
+    if (!colEl) return;
+    const finish = (isRefresh ? pendingRefreshes : pendingNavigations).get(colEl.dataset.id);
+    if (finish) finish(!!e.data.ok);
+  });
+
+  // Each column's frame reports the x-rate-limit-* headers of its API
+  // responses. That is what ties a column to the endpoints it spends on
+  // (rather than guessing from its URL), keeps the table current without a
+  // round trip through the background, and catches a 429 the moment it
+  // lands. Only responses from the column's own view count towards its
+  // endpoints, so a tweet opened inside it doesn't make it a TweetDetail column.
+  window.addEventListener('message', (e) => {
+    if (!e.data || e.data.type !== 'tweetdeckx-api-response') return;
+    const colEl = findColumnElForSource(e.source);
+    if (!colEl) return;
+    const col = findColumn(colEl.dataset.id);
+    if (!col) return;
+    const d = e.data;
+    if (typeof d.op !== 'string' || !d.op) return;
+    if (d.timeline && typeof d.url === 'string' && urlsEquivalent(d.url, getCanonicalUrl(col))) {
+      if (!columnOps.has(col.id)) columnOps.set(col.id, new Set());
+      columnOps.get(col.id).add(d.op);
+    }
+    const at = typeof d.at === 'number' ? d.at : Date.now();
+    if (typeof d.limit === 'number' && typeof d.remaining === 'number' && typeof d.reset === 'number') {
+      const prev = rateLimits[d.op];
+      if (!prev || !(prev.at > at)) {
+        rateLimits[d.op] = { limit: d.limit, remaining: d.remaining, reset: d.reset, at };
+      }
+    }
+    if (d.status === 429) {
+      onRateLimited({ op: d.op, reset: typeof d.reset === 'number' ? d.reset : null });
+    }
+    scheduleBudgetIndicatorUpdate();
+  });
 
   function attachColumnInteractionListeners(colEl) {
     const colId = colEl.dataset.id;
@@ -470,15 +702,24 @@
       }
     });
 
+    // Hovering activates the column, but only once the pointer has rested
+    // on it: sweeping across ten columns should not wake ten frames.
+    let hoverTimer = null;
     colEl.addEventListener('mouseenter', () => {
-      if (activeColumnId !== colId) {
-        activateColumn(colId);
-      } else {
+      if (activeColumnId === colId) {
         resetIdleTimer();
+        return;
       }
+      clearTimeout(hoverTimer);
+      hoverTimer = setTimeout(() => {
+        hoverTimer = null;
+        if (activeColumnId !== colId) activateColumn(colId);
+      }, HOVER_ACTIVATE_MS);
     });
 
     colEl.addEventListener('mouseleave', () => {
+      clearTimeout(hoverTimer);
+      hoverTimer = null;
       if (activeColumnId === colId) {
         resetIdleTimer();
       }
@@ -928,13 +1169,36 @@
       cachedEntry.wrapper.classList.remove('hidden');
       cachedEntry.lastAccessed = Date.now();
       emptyState.classList.add('hidden');
-      // Restart refresh timers for this page's columns
+      // Restart refresh timers for this page's columns, catch up the ones
+      // that went stale while the page was hidden, and load any that were
+      // waiting on a budget
       startRefreshTimers();
+      refreshStaleColumns(cachedEntry.wrapper);
+      loadDeferredColumns();
       return;
     }
 
     // Cache miss — cold load (renderColumns handles burst-resume)
     renderColumns();
+  }
+
+  // Columns on a page the user comes back to are refreshed in place, one
+  // at a time, if they are older than a refresh interval. Hidden pages get
+  // no refreshes at all, so this is what keeps them from feeling frozen.
+  function refreshStaleColumns(wrapper) {
+    let delay = 0;
+    wrapper.querySelectorAll('.deck-column').forEach((colEl) => {
+      if (!colEl.querySelector('iframe')) return;
+      const col = findColumn(colEl.dataset.id);
+      if (!col) return;
+      if (Date.now() - (lastRefreshAt.get(col.id) || 0) < STALE_AFTER_MS) return;
+      delay += randomStagger();
+      const timerId = setTimeout(() => {
+        pendingStaggerTimers = pendingStaggerTimers.filter(t => t !== timerId);
+        refreshColumn(col, { allowReload: false });
+      }, delay);
+      pendingStaggerTimers.push(timerId);
+    });
   }
 
   function reorderPages(fromId, toId) {
@@ -1004,6 +1268,10 @@
     const right = document.createElement('div');
     right.className = 'column-header-right';
 
+    const budgetSpan = document.createElement('span');
+    budgetSpan.className = 'column-budget hidden';
+    right.appendChild(budgetSpan);
+
     const refreshBtn = document.createElement('button');
     refreshBtn.className = 'col-btn';
     refreshBtn.dataset.action = 'refresh';
@@ -1027,6 +1295,9 @@
     const spinner = document.createElement('div');
     spinner.className = 'spinner';
     loading.appendChild(spinner);
+    const note = document.createElement('div');
+    note.className = 'loading-note';
+    loading.appendChild(note);
     colEl.appendChild(loading);
 
     // Column header button handlers (event delegation on the column root)
@@ -1041,9 +1312,12 @@
           try { iframe.contentWindow.postMessage({ type: 'tweetdeckx-back' }, '*'); } catch (err) {}
         }
       } else if (action === 'refresh') {
-        const iframe = colEl.querySelector('iframe');
-        if (iframe) {
-          iframe.src = getCanonicalUrl(col);
+        if (!canSpend(col)) {
+          showBudgetToast(col);
+        } else if (colEl.querySelector('iframe')) {
+          refreshColumn(col);
+        } else {
+          loadIframeForColumn(colEl, col);
         }
         activateColumn(col.id);
       } else if (action === 'menu') {
@@ -1063,6 +1337,23 @@
   function loadIframeForColumn(colEl, col) {
     const loadingEl = colEl.querySelector('.column-loading');
     if (!loadingEl) return;
+
+    // Loading a column boots the whole X client (15 to 25 API calls), so
+    // never do it into an exhausted budget: leave the placeholder up with a
+    // note and let loadDeferredColumns pick it up when the window resets.
+    if (!canSpend(col)) {
+      colEl.dataset.needsLoad = 'true';
+      colEl.dataset.budgetWait = 'true';
+      const note = loadingEl.querySelector('.loading-note');
+      const b = budgetFor(col);
+      if (note) {
+        note.textContent = b
+          ? `Waiting for X's ${b.op} rate limit to reset (${formatWait(waitFor(col))})`
+          : `Waiting for X's rate limit to reset (${formatWait(waitFor(col))})`;
+      }
+      scheduleDeferredLoads();
+      return;
+    }
 
     const iframe = document.createElement('iframe');
     iframe.className = 'column-frame';
@@ -1086,17 +1377,23 @@
       } catch (e) {
         // Cross-origin, content script handles it
       }
-      // Pause immediately, then give a brief burst for initial data fetch
+      // Let the client boot visible for a moment so its initial fetches are
+      // made as a foreground load, then pause unless the user is on it
       const colEl = iframe.closest('.deck-column');
       const colId = colEl ? colEl.dataset.id : null;
       if (colId) {
-        pauseColumn(colId);
-        burstResumeColumn(colId);
+        setTimeout(() => {
+          if (activeColumnId !== colId) pauseColumn(colId);
+        }, RESUME_BURST_MS);
       }
     });
 
     loadingEl.replaceWith(iframe);
     delete colEl.dataset.needsLoad;
+    delete colEl.dataset.budgetWait;
+    lastRefreshAt.set(col.id, Date.now());
+    resetRefreshTimer(col.id);
+    updateBudgetIndicators();
   }
 
   function broadcastHideAds() {
@@ -1200,7 +1497,7 @@
     // Create columns with stagger
     page.columns.forEach((col, index) => {
       const colEl = createColumnElement(col);
-      if (index === 0 && !isRateLimited) {
+      if (index === 0 && canSpend(col)) {
         loadIframeForColumn(colEl, col);
       } else {
         colEl.dataset.needsLoad = 'true';
@@ -1221,9 +1518,8 @@
           const colData = page.columns.find(c => c.id === el.dataset.id);
           if (colData) {
             const timerId = setTimeout(() => {
-              if (!isRateLimited) {
-                loadIframeForColumn(el, colData);
-              }
+              pendingStaggerTimers = pendingStaggerTimers.filter(t => t !== timerId);
+              loadIframeForColumn(el, colData);
             }, staggerDelay);
             pendingStaggerTimers.push(timerId);
           }
@@ -1234,8 +1530,8 @@
     }
 
     wrapper.appendChild(createTrailingAddButton());
-    // All columns start paused — initial data fetch is handled by
-    // burstResumeColumn in loadIframeForColumn's load handler
+    // Columns pause themselves shortly after loading (see
+    // loadIframeForColumn); only the hovered column stays awake
     pauseAllIframes();
     startRefreshTimers();
   }
@@ -1263,8 +1559,6 @@
 
     // Append single column to live DOM without destroying existing iframes
     const colEl = createColumnElement(col);
-    loadIframeForColumn(colEl, col);
-    resetRefreshTimer(col.id);
 
     const wrapper = getActiveWrapper();
     if (!wrapper) {
@@ -1278,6 +1572,8 @@
     } else {
       wrapper.appendChild(colEl);
     }
+    // Load after insertion so a budget deferral can find it in the wrapper
+    loadIframeForColumn(colEl, col);
 
     requestAnimationFrame(() => {
       colEl.scrollIntoView({ behavior: 'smooth', inline: 'start', block: 'nearest' });
@@ -1295,11 +1591,12 @@
     if (activeColumnId === colId) {
       deactivateActiveColumn();
     }
-    const timer = refreshTimers.get(colId);
-    if (timer) {
-      clearInterval(timer);
-      refreshTimers.delete(colId);
-    }
+    clearRefreshTimer(colId);
+    lastRefreshAt.delete(colId);
+    refreshFailures.delete(colId);
+    columnOps.delete(colId);
+    supersedePending(pendingRefreshes, colId);
+    supersedePending(pendingNavigations, colId);
 
     // Remove single column from live DOM without destroying other iframes
     const wrapper = getActiveWrapper();
@@ -1660,11 +1957,12 @@
     if (activeColumnId === colId) {
       deactivateActiveColumn();
     }
-    const timer = refreshTimers.get(colId);
-    if (timer) {
-      clearInterval(timer);
-      refreshTimers.delete(colId);
-    }
+    clearRefreshTimer(colId);
+    lastRefreshAt.delete(colId);
+    refreshFailures.delete(colId);
+    columnOps.delete(colId);
+    supersedePending(pendingRefreshes, colId);
+    supersedePending(pendingNavigations, colId);
     colRuntimeState.delete(colId);
 
     // Remove the column element from the active wrapper's DOM
@@ -1700,6 +1998,7 @@
     if (urlsEquivalent(currentUrl, getCanonicalUrl(col))) return;
 
     col.url = stripSearchFilters(currentUrl, col);
+    columnOps.delete(col.id); // the new view may fetch from a different endpoint
     saveState();
     updateBackButtonVisibility(colId);
   }
@@ -1715,9 +2014,7 @@
   // Points an already loaded column at its (possibly changed) canonical URL.
   // Columns that haven't loaded yet pick the new URL up when they do.
   function reloadColumn(col) {
-    const colEl = columnsContainer.querySelector(`.deck-column[data-id="${col.id}"]`);
-    const iframe = colEl && colEl.querySelector('iframe');
-    if (iframe) iframe.src = getCanonicalUrl(col);
+    navigateColumn(col, getCanonicalUrl(col));
   }
 
   function setHideReplies(colId, enabled) {
@@ -2106,11 +2403,9 @@
     if (pageToDelete) {
       for (const col of pageToDelete.columns) {
         colRuntimeState.delete(col.id);
-        const t = refreshTimers.get(col.id);
-        if (t) {
-          clearInterval(t);
-          refreshTimers.delete(col.id);
-        }
+        clearRefreshTimer(col.id);
+        lastRefreshAt.delete(col.id);
+        columnOps.delete(col.id);
       }
     }
 
@@ -2261,8 +2556,16 @@
   document.getElementById('btn-reset-pages').addEventListener('click', () => {
     if (confirm('Reset all pages? This will remove all pages and columns and cannot be undone.')) {
       deactivateActiveColumn();
+      clearAllRefreshTimers();
+      cancelPendingLoads();
+      clearTimeout(deferredLoadTimer);
       clearAllCache();
       colRuntimeState.clear();
+      lastRefreshAt.clear();
+      refreshFailures.clear();
+      columnOps.clear();
+      pendingRefreshes.forEach((finish) => finish(false, true));
+      pendingNavigations.forEach((finish) => finish(false, true));
       const defaultPage = {
         id: generateId('page'),
         name: 'Home',
@@ -2422,50 +2725,156 @@
   // -----------------------------------------
 
   let rateLimitToastTimer = null;
+  const rateLimitText = rateLimitToast.querySelector('.toast-text');
 
-  function showRateLimitToast() {
-    if (!rateLimitToast.classList.contains('hidden')) return;
-    isRateLimited = true;
+  // A 429 exhausts one endpoint's window, so only columns on that endpoint
+  // wait for it; everything else keeps its own budget. Only a 429 with no
+  // identifiable endpoint pauses the whole deck. The same 429 can arrive
+  // from the frame and from the background, so the toast is keyed on it.
+  function onRateLimited(msg) {
+    const resetSec = msg.reset || Math.ceil(Date.now() / 1000) + 60;
+    const op = msg.op || null;
+    const key = `${op || '*'}:${resetSec}`;
+    if (op) {
+      const prev = rateLimits[op] || {};
+      rateLimits[op] = { limit: prev.limit || 0, remaining: 0, reset: resetSec, at: Date.now() };
+    } else {
+      rateLimitedUntil = Math.max(rateLimitedUntil, resetSec * 1000 + 2000);
+    }
     cancelPendingLoads();
+    // Columns that were about to load now have to check their budget again
+    const page = getActivePage();
+    const wrapper = getActiveWrapper();
+    if (page && wrapper) {
+      wrapper.querySelectorAll('.deck-column[data-needs-load]').forEach((colEl) => {
+        const col = page.columns.find(c => c.id === colEl.dataset.id);
+        if (col && !canSpend(col)) loadIframeForColumn(colEl, col);
+      });
+    }
+    if (key !== lastRateLimitToastKey) {
+      lastRateLimitToastKey = key;
+      showRateLimitToast(op, Math.max(0, resetSec * 1000 - Date.now()));
+    }
+    scheduleDeferredLoads();
+    updateBudgetIndicators();
+  }
+
+  // Shown once per 429, briefly. The column headers and loading notes
+  // carry the wait from then on.
+  function showRateLimitToast(op, waitMs) {
+    rateLimitText.textContent = op
+      ? `X is rate limiting ${op}. Columns on it resume in ${formatWait(waitMs)}.`
+      : `X is rate limiting requests. Columns resume in ${formatWait(waitMs)}.`;
     rateLimitToast.classList.remove('hidden');
     clearTimeout(rateLimitToastTimer);
-    rateLimitToastTimer = setTimeout(() => dismissRateLimitToast(), 30000);
+    rateLimitToastTimer = setTimeout(dismissRateLimitToast, 8000);
   }
 
   function dismissRateLimitToast() {
     rateLimitToast.classList.add('hidden');
     clearTimeout(rateLimitToastTimer);
-    setTimeout(() => {
-      isRateLimited = false;
-      resumePausedLoads();
-    }, 20000);
   }
 
-  function resumePausedLoads() {
+  function showBudgetToast(col) {
+    const b = budgetFor(col);
+    const wait = formatWait(waitFor(col));
+    rateLimitText.textContent = b
+      ? `${b.op} has ${b.remaining} of ${b.limit} calls left in this window. Resets in ${wait}.`
+      : `X is rate limiting requests. Resets in ${wait}.`;
+    rateLimitToast.classList.remove('hidden');
+    clearTimeout(rateLimitToastTimer);
+    rateLimitToastTimer = setTimeout(dismissRateLimitToast, 6000);
+  }
+
+  // Columns left unloaded because of a budget (marked data-budget-wait,
+  // as opposed to columns merely waiting to scroll into view) are retried
+  // once the earliest relevant window resets.
+  function scheduleDeferredLoads() {
+    const page = getActivePage();
+    const wrapper = getActiveWrapper();
+    if (!page || !wrapper) return;
+    let soonest = Infinity;
+    wrapper.querySelectorAll('.deck-column[data-budget-wait]').forEach((colEl) => {
+      const col = page.columns.find(c => c.id === colEl.dataset.id);
+      if (col) soonest = Math.min(soonest, waitFor(col));
+    });
+    if (soonest === Infinity) return;
+    clearTimeout(deferredLoadTimer);
+    deferredLoadTimer = setTimeout(loadDeferredColumns, Math.max(1000, soonest));
+  }
+
+  function loadDeferredColumns() {
     const page = getActivePage();
     if (!page) return;
     const wrapper = getActiveWrapper();
     if (!wrapper) return;
-    const unloaded = wrapper.querySelectorAll('.column-loading');
+    const deferred = wrapper.querySelectorAll('.deck-column[data-budget-wait]');
     let delay = 0;
-    unloaded.forEach((loadingEl) => {
-      const colEl = loadingEl.closest('.deck-column');
-      if (!colEl) return;
+    deferred.forEach((colEl) => {
+      if (!colEl.querySelector('.column-loading')) return;
       const colData = page.columns.find(c => c.id === colEl.dataset.id);
       if (!colData) return;
       delay += randomStagger();
       const timerId = setTimeout(() => {
-        if (!isRateLimited) {
-          loadIframeForColumn(colEl, colData);
-        }
+        loadIframeForColumn(colEl, colData);
         pendingStaggerTimers = pendingStaggerTimers.filter(t => t !== timerId);
       }, delay);
       pendingStaggerTimers.push(timerId);
     });
   }
 
+  // Merges the background's table (which also sees other x.com tabs) with
+  // what the frames reported directly, newest entry per endpoint wins.
+  function applyRateLimits(limits) {
+    if (!limits || typeof limits !== 'object') return;
+    Object.keys(limits).forEach((op) => {
+      const b = limits[op];
+      if (!b || typeof b !== 'object') return;
+      const prev = rateLimits[op];
+      if (!prev || !(prev.at > (b.at || 0))) rateLimits[op] = b;
+    });
+    updateBudgetIndicators();
+    scheduleDeferredLoads();
+  }
+
+  // Shows the tightest known budget on each column header, like "12/50",
+  // with the reset time in the tooltip. Only columns whose endpoint X has
+  // reported on get one.
+  function updateBudgetIndicators() {
+    columnsContainer.querySelectorAll('.deck-column').forEach((colEl) => {
+      const span = colEl.querySelector('.column-budget');
+      if (!span) return;
+      const col = findColumn(colEl.dataset.id);
+      const b = col && budgetFor(col);
+      if (!b) {
+        span.classList.add('hidden');
+        return;
+      }
+      const wait = formatWait(Math.max(0, b.reset * 1000 - Date.now()));
+      span.textContent = `${b.remaining}/${b.limit}`;
+      span.title = `${b.op}: ${b.remaining} of ${b.limit} calls left, resets in ${wait}`;
+      span.classList.toggle('low', b.remaining <= BUDGET_RESERVE);
+      span.classList.remove('hidden');
+    });
+  }
+
+  function scheduleBudgetIndicatorUpdate() {
+    if (budgetIndicatorTimer) return;
+    budgetIndicatorTimer = setTimeout(() => {
+      budgetIndicatorTimer = null;
+      updateBudgetIndicators();
+    }, 200);
+  }
+
+  setInterval(updateBudgetIndicators, 30000);
+
   chrome.runtime.onMessage.addListener((msg) => {
-    if (msg.type === 'tweetdeckx-rate-limited') showRateLimitToast();
+    if (msg.type === 'tweetdeckx-rate-limited') onRateLimited(msg);
+    if (msg.type === 'tweetdeckx-rate-limits') applyRateLimits(msg.limits);
+    if (msg.type === 'tweetdeckx-backoff' && msg.ms > 0) {
+      backoffUntil = Math.max(backoffUntil, Date.now() + msg.ms);
+      scheduleDeferredLoads();
+    }
     if (msg.type === 'tweetdeckx-update-available') showUpdateToast(msg.version, msg.url);
   });
 
@@ -2521,6 +2930,18 @@
     saveState();
     applyTheme();
     renderSidebar();
+
+    // Pick up the rate-limit headers the background has seen so far, so the
+    // first columns are loaded against a known budget
+    try {
+      applyRateLimits(await Promise.race([
+        chrome.runtime.sendMessage({ type: 'tweetdeckx-get-rate-limits' }),
+        new Promise((resolve) => setTimeout(() => resolve(null), 1500)),
+      ]));
+    } catch (e) {
+      // Background not reachable — load without a budget
+    }
+
     renderColumns();
 
     // Request an update check from the background script
