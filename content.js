@@ -72,9 +72,11 @@
     if (e.data && (e.data.type === 'tweetdeckx-lightbox-opened' || e.data.type === 'tweetdeckx-lightbox-closed')) {
       try { window.parent.postMessage(e.data, '*'); } catch (err) {}
     }
-    // Forward the outcome of an in-place refresh so the deck knows whether
-    // to fall back to a full reload
-    if (e.data && (e.data.type === 'tweetdeckx-refresh-result' || e.data.type === 'tweetdeckx-navigate-result')) {
+    // Forward the outcome of an in-place refresh or navigation so the deck
+    // knows whether to fall back to a full reload, and the rate-limit
+    // headers of each API response so it knows this column's budget
+    if (e.data && (e.data.type === 'tweetdeckx-refresh-result' || e.data.type === 'tweetdeckx-navigate-result'
+      || e.data.type === 'tweetdeckx-api-response')) {
       try { window.parent.postMessage(e.data, '*'); } catch (err) {}
     }
   });

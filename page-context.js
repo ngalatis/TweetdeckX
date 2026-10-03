@@ -10,6 +10,8 @@
 // hidden, and X's own code does the rest. The setInterval wrapper is kept
 // as a second line of defence, and an XMLHttpRequest wrapper drops any
 // request X itself labels as a poll (x-twitter-polling: true) while paused.
+// The same wrapper reads the x-rate-limit-* headers off every API response
+// so the deck knows exactly which endpoints this column spends.
 
 (function () {
   // Only apply in iframe context
@@ -66,10 +68,6 @@
     try { document.dispatchEvent(new Event('visibilitychange', { bubbles: true })); } catch (e) {}
   }
 
-  function emitWindowEvent(name) {
-    try { window.dispatchEvent(new Event(name)); } catch (e) {}
-  }
-
   // --- Interval pause/resume (second line of defence) ---
   var _intervals = {};
   var _nextId = 1;
@@ -118,18 +116,61 @@
   // X's API client sends everything through XMLHttpRequest (fetch is only
   // used for keepalive beacons). Requests X itself marks as polls carry an
   // x-twitter-polling: true header; while the column is paused they are
-  // failed locally with status 0, which X treats as a network error. API
-  // requests are also timestamped so the deck can tell whether an in-place
-  // refresh actually produced a timeline fetch.
+  // failed locally with status 0, which X treats as a network error.
+  // Timeline requests are timestamped so the deck can tell whether an
+  // in-place refresh actually produced a fetch, and every API response's
+  // x-rate-limit-* headers (readable here because the API is same-origin)
+  // are reported to the deck together with the endpoint they belong to.
   var _lastTimelineRequestAt = 0;
+  var _timelineInFlight = 0;
 
   function isApiUrl(url) {
     return /^https:\/\/(api\.x\.com|x\.com\/i\/api|api\.twitter\.com|twitter\.com\/i\/api)\//.test(url)
       || /^\/i\/api\//.test(url);
   }
 
+  // Endpoints that fetch what a column shows. GraphQL for timelines, REST
+  // for notifications and the DM inbox.
   function isTimelineUrl(url) {
-    return /\/graphql\/[^/]+\/([A-Za-z]*Timeline|SearchTimeline|UserTweets|UserTweetsAndReplies|UserMedia|Likes|Bookmarks|TweetDetail|ExplorePage)(\?|$)/.test(url);
+    return /\/graphql\/[^/]+\/([A-Za-z]*Timeline|SearchTimeline|UserTweets|UserTweetsAndReplies|UserMedia|Likes|Bookmarks|TweetDetail|ExplorePage)(\?|$)/.test(url)
+      || /\/i\/api\/2\/notifications\/[a-z_]+\.json/.test(url)
+      || /\/i\/api\/1\.1\/dm\/inbox_initial_state\.json/.test(url);
+  }
+
+  // Same naming as background.js: the GraphQL operation, or the REST path.
+  function operationForUrl(url) {
+    var m = /\/graphql\/[^/]+\/([A-Za-z0-9_]+)/.exec(url);
+    if (m) return m[1];
+    try {
+      var path = new URL(url, location.href).pathname;
+      return path.replace(/^\/i\/api\//, '/').replace(/\.json$/, '');
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function reportResponse(xhr, url, timeline) {
+    var status = 0, limit = null, remaining = null, reset = null;
+    try {
+      status = xhr.status;
+      limit = xhr.getResponseHeader('x-rate-limit-limit');
+      remaining = xhr.getResponseHeader('x-rate-limit-remaining');
+      reset = xhr.getResponseHeader('x-rate-limit-reset');
+    } catch (e) {}
+    if (limit === null && status !== 429) return;
+    var op = operationForUrl(url);
+    if (!op) return;
+    emit({
+      type: 'tweetdeckx-api-response',
+      op: op,
+      url: location.href,
+      timeline: timeline,
+      status: status,
+      limit: limit === null ? null : Number(limit),
+      remaining: remaining === null ? null : Number(remaining),
+      reset: reset === null ? null : Number(reset),
+      at: Date.now(),
+    });
   }
 
   try {
@@ -157,7 +198,16 @@
           failLocally(this);
           return;
         }
-        if (isTimelineUrl(info.url)) _lastTimelineRequestAt = Date.now();
+        var timeline = isTimelineUrl(info.url);
+        if (timeline) {
+          _lastTimelineRequestAt = Date.now();
+          _timelineInFlight++;
+        }
+        var xhr = this;
+        this.addEventListener('loadend', function () {
+          if (timeline) _timelineInFlight = Math.max(0, _timelineInFlight - 1);
+          reportResponse(xhr, info.url, timeline);
+        });
       }
       return _send.apply(this, arguments);
     };
@@ -180,13 +230,13 @@
   }
 
   // --- Pause / resume ---
+  // Only the visibility state is toggled. Synthetic focus/blur events are
+  // deliberately not sent: X refetches Home on every focus after a 30s
+  // blur, which would spend a request each time the pointer came back.
   function pause() {
     if (_paused) return;
     _paused = true;
     stopIntervals();
-    // Home records the blur time and only refetches on focus if it was
-    // blurred for long enough, so blur first, then go hidden.
-    emitWindowEvent('blur');
     emitVisibilityChange();
     // Pause all videos so they stop cleanly instead of stalling mid-buffer.
     // Skip the video currently in Picture-in-Picture so it keeps playing
@@ -204,7 +254,79 @@
     _paused = false;
     startIntervals();
     emitVisibilityChange();
-    emitWindowEvent('focus');
+  }
+
+  // --- React internals ---
+  // X's timeline and router are reached through the React fiber tree
+  // hanging off the DOM. The members used (refreshOrGoTop, scrollToTop,
+  // props.onRefresh, props.history) are class members and props, which
+  // X's build does not minify. Everything here degrades to null when the
+  // shape changes, and the callers then fall back to keyboard shortcuts
+  // and finally to a page reload.
+  function fiberOf(el) {
+    if (!el) return null;
+    for (var key in el) {
+      if (key.indexOf('__reactFiber$') === 0) return el[key];
+    }
+    return null;
+  }
+
+  function findUp(el, test) {
+    var f = fiberOf(el);
+    var n = 0;
+    while (f && n++ < 1000) {
+      var r = null;
+      try { r = test(f); } catch (e) {}
+      if (r) return r;
+      f = f.return;
+    }
+    return null;
+  }
+
+  function findDown(el, test) {
+    var root = fiberOf(el);
+    if (!root) return null;
+    var stack = [root];
+    var n = 0;
+    while (stack.length && n++ < 20000) {
+      var f = stack.pop();
+      var r = null;
+      try { r = test(f); } catch (e) {}
+      if (r) return r;
+      if (f !== root && f.sibling) stack.push(f.sibling);
+      if (f.child) stack.push(f.child);
+    }
+    return null;
+  }
+
+  function timelineStart() {
+    return document.querySelector('[data-testid="primaryColumn"] [data-testid="cellInnerDiv"]')
+      || document.querySelector('[data-testid="cellInnerDiv"]')
+      || document.querySelector('[data-testid="primaryColumn"]')
+      || document.querySelector('main');
+  }
+
+  function asTimelineRenderer(f) {
+    var sn = f.stateNode;
+    if (sn && typeof sn.refreshOrGoTop === 'function' && typeof sn.scrollToTop === 'function'
+      && sn.props && typeof sn.props.onRefresh === 'function') return sn;
+    return null;
+  }
+
+  function findTimelineRenderer() {
+    return findUp(timelineStart(), asTimelineRenderer)
+      || findDown(document.querySelector('[data-testid="primaryColumn"]') || document.querySelector('main'), asTimelineRenderer);
+  }
+
+  function asRouterHistory(f) {
+    var p = f.memoizedProps;
+    var h = p && p.history;
+    if (h && typeof h.push === 'function' && h.location && typeof h.location === 'object') return h;
+    return null;
+  }
+
+  function findHistory() {
+    return findUp(timelineStart() || document.body, asRouterHistory);
   }
 
   function dispatchKey(target, type, keyCode, charCode) {
@@ -223,49 +345,115 @@
     } catch (e) {}
   }
 
+  // Resolves as soon as a timeline request goes out, or with the in-flight
+  // state at the deadline. A request that was already running when the
+  // refresh was asked for will deliver fresh posts just the same.
+  function waitForTimelineRequest(before, inFlight, maxMs, cb) {
+    var started = Date.now();
+    (function check() {
+      if (_lastTimelineRequestAt > before) return cb(true);
+      if (Date.now() - started >= maxMs) return cb(inFlight);
+      setTimeout(check, 50);
+    })();
+  }
+
   // --- In-place refresh ---
-  // Asks X to fetch the top of the current timeline without reloading the
-  // page. X's own "." shortcut does exactly that (scroll to top, then load
-  // new posts), and Home additionally refetches on window focus. These are
-  // user-initiated fetches rather than polls, so they go out even while the
-  // column is paused and the badge poller stays off. Whether a timeline
-  // request actually went out is reported back so the deck can fall back to
-  // a full reload when it did not.
+  // Asks X's timeline to fetch the top of the current timeline without
+  // reloading the page, as a user-initiated fetch rather than a poll, so it
+  // goes out even while the column is paused and the badge poller stays
+  // off. The timeline component is called directly; X's "." shortcut only
+  // fetches when its list already reads as scrolled to the top and is
+  // throttled to once a second, so it is kept as the fallback. Whether a
+  // timeline request actually went out is reported back so the deck can
+  // fall back to a full reload when it did not.
   function refreshInPlace() {
     var before = _lastTimelineRequestAt;
+    var inFlight = _timelineInFlight > 0;
     _suppressActivityUntil = Date.now() + 3000;
-    try { window.scrollTo(0, 0); } catch (e) {}
-    try { if (document.scrollingElement) document.scrollingElement.scrollTop = 0; } catch (e) {}
-    // X binds "." with a Mousetrap-style handler, which listens for the
-    // keypress of single character keys, so send the full keydown /
-    // keypress / keyup sequence with the legacy code fields filled in.
-    var target = document.body || document.documentElement;
-    dispatchKey(target, 'keydown', 190, 0);
-    dispatchKey(target, 'keypress', 46, 46);
-    dispatchKey(target, 'keyup', 190, 0);
-    setTimeout(function () {
-      emit({ type: 'tweetdeckx-refresh-result', ok: _lastTimelineRequestAt > before });
-    }, 2500);
+    var direct = false;
+    try {
+      var tl = findTimelineRenderer();
+      if (tl) {
+        tl.scrollToTop(false);
+        tl.props.onRefresh();
+        direct = true;
+      }
+    } catch (e) {}
+    if (!direct) {
+      try { window.scrollTo(0, 0); } catch (e) {}
+      try { if (document.scrollingElement) document.scrollingElement.scrollTop = 0; } catch (e) {}
+      // X binds "." with Mousetrap, which listens for the keypress of single
+      // character keys, so send the full keydown / keypress / keyup sequence
+      // with the legacy code fields filled in.
+      var target = document.body || document.documentElement;
+      dispatchKey(target, 'keydown', 190, 0);
+      dispatchKey(target, 'keypress', 46, 46);
+      dispatchKey(target, 'keyup', 190, 0);
+    }
+    waitForTimelineRequest(before, inFlight, direct ? 1000 : 1500, function (ok) {
+      emit({ type: 'tweetdeckx-refresh-result', ok: ok, direct: direct });
+    });
   }
 
   // --- In-place navigation ---
-  // Pushes a new URL into X's router without reloading the page. X's history
-  // listens for popstate, so a pushState followed by a synthetic popstate is
-  // enough for it to render the new route (for example a changed search
-  // query). Whether a timeline request followed is reported back so the
-  // deck can fall back to a reload when the route did not take.
+  // Points X's own router at a new URL, the same thing a link click does,
+  // so a changed search query renders without a page reload. The router
+  // pushes through history.pushState, which the wrapper below sees, and
+  // that is the confirmation. Without a router a synthetic popstate is
+  // tried and confirmed by the DOM changing. Either way the outcome is
+  // reported so the deck can fall back to a reload.
+  var _lastRouteChangeAt = 0;
+
   function navigateInPlace(url) {
-    var before = _lastTimelineRequestAt;
+    var target;
+    try { target = new URL(url, location.href); } catch (e) {
+      emit({ type: 'tweetdeckx-navigate-result', ok: false, url: url });
+      return;
+    }
+    var to = target.pathname + target.search + target.hash;
+    var before = _lastRouteChangeAt;
     _suppressActivityUntil = Date.now() + 3000;
+    var mutations = 0;
+    var observer = null;
     try {
-      _origPushState.call(history, {}, '', url);
-      window.dispatchEvent(new PopStateEvent('popstate', { state: {} }));
-      checkLightbox();
-      emitUrlChange();
+      observer = new MutationObserver(function (list) {
+        for (var i = 0; i < list.length; i++) {
+          mutations += list[i].addedNodes.length + list[i].removedNodes.length;
+        }
+      });
+      observer.observe(document.body, { childList: true, subtree: true });
     } catch (e) {}
-    setTimeout(function () {
-      emit({ type: 'tweetdeckx-navigate-result', ok: _lastTimelineRequestAt > before, url: url });
-    }, 1500);
+    var pushed = false;
+    try {
+      var h = findHistory();
+      if (h) {
+        h.push(to);
+        pushed = true;
+      }
+    } catch (e) {}
+    if (!pushed) {
+      try {
+        _origPushState.call(history, {}, '', to);
+        window.dispatchEvent(new PopStateEvent('popstate', { state: {} }));
+        checkLightbox();
+        emitUrlChange();
+      } catch (e) {}
+    }
+    var started = Date.now();
+    (function check() {
+      var atTarget = false;
+      try {
+        atTarget = decodeURIComponent(location.pathname + location.search)
+          === decodeURIComponent(target.pathname + target.search);
+      } catch (e) {}
+      var ok = (pushed && _lastRouteChangeAt > before) || (atTarget && mutations >= 10);
+      if (ok || Date.now() - started >= 1200) {
+        if (observer) observer.disconnect();
+        emit({ type: 'tweetdeckx-navigate-result', ok: ok, url: url });
+        return;
+      }
+      setTimeout(check, 50);
+    })();
   }
 
   window.addEventListener('message', function (e) {
@@ -319,6 +507,7 @@
 
   history.pushState = function () {
     var result = _origPushState.apply(this, arguments);
+    _lastRouteChangeAt = Date.now();
     checkLightbox();
     emitUrlChange();
     return result;
@@ -326,6 +515,7 @@
 
   history.replaceState = function () {
     var result = _origReplaceState.apply(this, arguments);
+    _lastRouteChangeAt = Date.now();
     checkLightbox();
     emitUrlChange();
     return result;

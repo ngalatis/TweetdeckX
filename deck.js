@@ -317,11 +317,12 @@
   // user and per endpoint, in 15 minute windows, so every column that hits
   // the same endpoint shares one budget.
   const rateLimits = {};        // op -> { limit, remaining, reset (unix s), at (ms) }
-  let rateLimitedUntil = 0;     // ms; from a 429's x-rate-limit-reset
+  const columnOps = new Map();  // Map<columnId, Set<op>> endpoints a column has actually fetched its posts from
+  let rateLimitedUntil = 0;     // ms; from a 429 with no identifiable endpoint
   let backoffUntil = 0;         // ms; from a backoff-policy header
-  let rateLimitedOp = null;
-  let rateLimitedToastUntil = 0; // ms; how long the 429 toast counts down
+  let lastRateLimitToastKey = null; // "op:reset" of the last 429 shown, so one 429 makes one toast
   let deferredLoadTimer = null;  // retry for columns waiting on a budget
+  let budgetIndicatorTimer = null;
   const BUDGET_RESERVE = 3;     // calls per endpoint kept back for the user's own clicks
 
   function isThrottled() {
@@ -359,11 +360,19 @@
     return [];
   }
 
+  // Endpoints a column spends on: the ones its frame has been seen fetching
+  // posts from, plus the guess from its URL until that happens.
+  function opsForColumn(col) {
+    const ops = new Set(columnOps.get(col.id) || []);
+    operationsForUrl(getCanonicalUrl(col)).forEach((op) => ops.add(op));
+    return ops;
+  }
+
   // The tightest known budget among a column's endpoints, or null when X
   // hasn't reported on them yet or the window has already reset.
   function budgetFor(col) {
     let worst = null;
-    for (const op of operationsForUrl(getCanonicalUrl(col))) {
+    for (const op of opsForColumn(col)) {
       const b = rateLimits[op];
       if (!b || b.reset * 1000 <= Date.now()) continue;
       if (!worst || b.remaining < worst.remaining) worst = { op, ...b };
@@ -436,7 +445,10 @@
   const REFRESH_INTERVAL = 300000; // 5 minutes between background refreshes (±20% jitter)
   const RESUME_BURST_MS = 3000;    // how long a column stays visible after loading
   const HOVER_ACTIVATE_MS = 400;   // pointer must rest on a column this long to activate it
-  const STALE_AFTER_MS = 60000;    // a page switch refreshes columns older than this
+  // A page switch catches up columns the background cycle would have
+  // refreshed by now. Anything shorter spends extra on every switch, which
+  // adds up fast against search's 50 calls per window.
+  const STALE_AFTER_MS = REFRESH_INTERVAL;
 
   function pauseAllIframes() {
     columnsContainer.querySelectorAll('iframe').forEach(function (iframe) {
@@ -561,9 +573,9 @@
   }
 
   // Refreshes a loaded column. Asks the frame to load new posts in place
-  // (X's own "." shortcut, one timeline request); only if the frame reports
-  // that nothing was fetched, and reloading is allowed, is the page reloaded.
-  // Respects the endpoint budget either way.
+  // (X's own timeline component, one timeline request); only if the frame
+  // reports that nothing was fetched, and reloading is allowed, is the page
+  // reloaded. Respects the endpoint budget either way.
   function refreshColumn(col, { allowReload = true } = {}) {
     const colEl = columnsContainer.querySelector(`.deck-column[data-id="${col.id}"]`);
     const iframe = colEl && colEl.querySelector('iframe');
@@ -573,6 +585,8 @@
       return Promise.resolve(false);
     }
     supersedePending(pendingRefreshes, col.id);
+    const refreshBtn = colEl.querySelector('[data-action="refresh"]');
+    if (refreshBtn) refreshBtn.classList.add('refreshing');
     return new Promise((resolve) => {
       let timer = null;
       const finish = (ok, superseded) => {
@@ -580,7 +594,8 @@
         if (pendingRefreshes.get(col.id) === finish) pendingRefreshes.delete(col.id);
         resolve(superseded ? null : ok);
       };
-      timer = setTimeout(() => finish(false), 4000);
+      // The frame answers within 1.5s; the margin covers message delivery
+      timer = setTimeout(() => finish(false), 3000);
       pendingRefreshes.set(col.id, finish);
       try {
         iframe.contentWindow.postMessage({ type: 'tweetdeckx-refresh' }, '*');
@@ -588,6 +603,7 @@
         finish(false);
       }
     }).then((ok) => {
+      if (refreshBtn && ok !== null) refreshBtn.classList.remove('refreshing');
       if (ok === null) return false; // a newer request for this column took over
       if (ok) {
         lastRefreshAt.set(col.id, Date.now());
@@ -625,7 +641,8 @@
       lastRefreshAt.set(col.id, Date.now());
       if (!ok && iframe.isConnected) iframe.src = url;
     };
-    timer = setTimeout(() => finish(false), 3000);
+    // The frame answers within 1.2s; the margin covers message delivery
+    timer = setTimeout(() => finish(false), 2500);
     pendingNavigations.set(col.id, finish);
     try {
       iframe.contentWindow.postMessage({ type: 'tweetdeckx-navigate', url }, '*');
@@ -643,6 +660,37 @@
     if (!colEl) return;
     const finish = (isRefresh ? pendingRefreshes : pendingNavigations).get(colEl.dataset.id);
     if (finish) finish(!!e.data.ok);
+  });
+
+  // Each column's frame reports the x-rate-limit-* headers of its API
+  // responses. That is what ties a column to the endpoints it spends on
+  // (rather than guessing from its URL), keeps the table current without a
+  // round trip through the background, and catches a 429 the moment it
+  // lands. Only responses from the column's own view count towards its
+  // endpoints, so a tweet opened inside it doesn't make it a TweetDetail column.
+  window.addEventListener('message', (e) => {
+    if (!e.data || e.data.type !== 'tweetdeckx-api-response') return;
+    const colEl = findColumnElForSource(e.source);
+    if (!colEl) return;
+    const col = findColumn(colEl.dataset.id);
+    if (!col) return;
+    const d = e.data;
+    if (typeof d.op !== 'string' || !d.op) return;
+    if (d.timeline && typeof d.url === 'string' && urlsEquivalent(d.url, getCanonicalUrl(col))) {
+      if (!columnOps.has(col.id)) columnOps.set(col.id, new Set());
+      columnOps.get(col.id).add(d.op);
+    }
+    const at = typeof d.at === 'number' ? d.at : Date.now();
+    if (typeof d.limit === 'number' && typeof d.remaining === 'number' && typeof d.reset === 'number') {
+      const prev = rateLimits[d.op];
+      if (!prev || !(prev.at > at)) {
+        rateLimits[d.op] = { limit: d.limit, remaining: d.remaining, reset: d.reset, at };
+      }
+    }
+    if (d.status === 429) {
+      onRateLimited({ op: d.op, reset: typeof d.reset === 'number' ? d.reset : null });
+    }
+    scheduleBudgetIndicatorUpdate();
   });
 
   function attachColumnInteractionListeners(colEl) {
@@ -1135,8 +1183,8 @@
   }
 
   // Columns on a page the user comes back to are refreshed in place, one
-  // at a time, if they are older than a minute. Hidden pages get no
-  // refreshes at all, so this is what keeps them from feeling frozen.
+  // at a time, if they are older than a refresh interval. Hidden pages get
+  // no refreshes at all, so this is what keeps them from feeling frozen.
   function refreshStaleColumns(wrapper) {
     let delay = 0;
     wrapper.querySelectorAll('.deck-column').forEach((colEl) => {
@@ -1546,6 +1594,7 @@
     clearRefreshTimer(colId);
     lastRefreshAt.delete(colId);
     refreshFailures.delete(colId);
+    columnOps.delete(colId);
     supersedePending(pendingRefreshes, colId);
     supersedePending(pendingNavigations, colId);
 
@@ -1911,6 +1960,7 @@
     clearRefreshTimer(colId);
     lastRefreshAt.delete(colId);
     refreshFailures.delete(colId);
+    columnOps.delete(colId);
     supersedePending(pendingRefreshes, colId);
     supersedePending(pendingNavigations, colId);
     colRuntimeState.delete(colId);
@@ -1948,6 +1998,7 @@
     if (urlsEquivalent(currentUrl, getCanonicalUrl(col))) return;
 
     col.url = stripSearchFilters(currentUrl, col);
+    columnOps.delete(col.id); // the new view may fetch from a different endpoint
     saveState();
     updateBackButtonVisibility(colId);
   }
@@ -2354,6 +2405,7 @@
         colRuntimeState.delete(col.id);
         clearRefreshTimer(col.id);
         lastRefreshAt.delete(col.id);
+        columnOps.delete(col.id);
       }
     }
 
@@ -2511,6 +2563,7 @@
       colRuntimeState.clear();
       lastRefreshAt.clear();
       refreshFailures.clear();
+      columnOps.clear();
       pendingRefreshes.forEach((finish) => finish(false, true));
       pendingNavigations.forEach((finish) => finish(false, true));
       const defaultPage = {
@@ -2676,17 +2729,17 @@
 
   // A 429 exhausts one endpoint's window, so only columns on that endpoint
   // wait for it; everything else keeps its own budget. Only a 429 with no
-  // identifiable endpoint pauses the whole deck.
+  // identifiable endpoint pauses the whole deck. The same 429 can arrive
+  // from the frame and from the background, so the toast is keyed on it.
   function onRateLimited(msg) {
     const resetSec = msg.reset || Math.ceil(Date.now() / 1000) + 60;
-    rateLimitedOp = msg.op || null;
-    if (msg.op) {
-      const prev = rateLimits[msg.op] || {};
-      rateLimits[msg.op] = { limit: prev.limit || 0, remaining: 0, reset: resetSec, at: Date.now() };
-      rateLimitedToastUntil = resetSec * 1000 + 2000;
+    const op = msg.op || null;
+    const key = `${op || '*'}:${resetSec}`;
+    if (op) {
+      const prev = rateLimits[op] || {};
+      rateLimits[op] = { limit: prev.limit || 0, remaining: 0, reset: resetSec, at: Date.now() };
     } else {
       rateLimitedUntil = Math.max(rateLimitedUntil, resetSec * 1000 + 2000);
-      rateLimitedToastUntil = rateLimitedUntil;
     }
     cancelPendingLoads();
     // Columns that were about to load now have to check their budget again
@@ -2698,23 +2751,23 @@
         if (col && !canSpend(col)) loadIframeForColumn(colEl, col);
       });
     }
-    showRateLimitToast();
+    if (key !== lastRateLimitToastKey) {
+      lastRateLimitToastKey = key;
+      showRateLimitToast(op, Math.max(0, resetSec * 1000 - Date.now()));
+    }
     scheduleDeferredLoads();
     updateBudgetIndicators();
   }
 
-  function showRateLimitToast() {
-    const wait = Math.max(0, rateLimitedToastUntil - Date.now());
-    const what = rateLimitedOp
-      ? `X is rate limiting ${rateLimitedOp}. Columns on it resume in ${formatWait(wait)}.`
-      : `X is rate limiting requests. Columns resume in ${formatWait(wait)}.`;
-    rateLimitText.textContent = what;
+  // Shown once per 429, briefly. The column headers and loading notes
+  // carry the wait from then on.
+  function showRateLimitToast(op, waitMs) {
+    rateLimitText.textContent = op
+      ? `X is rate limiting ${op}. Columns on it resume in ${formatWait(waitMs)}.`
+      : `X is rate limiting requests. Columns resume in ${formatWait(waitMs)}.`;
     rateLimitToast.classList.remove('hidden');
     clearTimeout(rateLimitToastTimer);
-    rateLimitToastTimer = setTimeout(() => {
-      if (Date.now() < rateLimitedToastUntil) showRateLimitToast();
-      else dismissRateLimitToast();
-    }, 1000);
+    rateLimitToastTimer = setTimeout(dismissRateLimitToast, 8000);
   }
 
   function dismissRateLimitToast() {
@@ -2770,9 +2823,16 @@
     });
   }
 
+  // Merges the background's table (which also sees other x.com tabs) with
+  // what the frames reported directly, newest entry per endpoint wins.
   function applyRateLimits(limits) {
     if (!limits || typeof limits !== 'object') return;
-    Object.assign(rateLimits, limits);
+    Object.keys(limits).forEach((op) => {
+      const b = limits[op];
+      if (!b || typeof b !== 'object') return;
+      const prev = rateLimits[op];
+      if (!prev || !(prev.at > (b.at || 0))) rateLimits[op] = b;
+    });
     updateBudgetIndicators();
     scheduleDeferredLoads();
   }
@@ -2796,6 +2856,14 @@
       span.classList.toggle('low', b.remaining <= BUDGET_RESERVE);
       span.classList.remove('hidden');
     });
+  }
+
+  function scheduleBudgetIndicatorUpdate() {
+    if (budgetIndicatorTimer) return;
+    budgetIndicatorTimer = setTimeout(() => {
+      budgetIndicatorTimer = null;
+      updateBudgetIndicators();
+    }, 200);
   }
 
   setInterval(updateBudgetIndicators, 30000);

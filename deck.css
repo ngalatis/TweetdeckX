@@ -311,6 +311,10 @@ html, body {
   transition: background 0.15s, color 0.15s;
 }
 
+.col-btn.refreshing svg {
+  animation: spin 0.8s linear infinite;
+}
+
 .col-btn:hover {
   background: var(--bg-surface-hover);
   color: var(--text-primary);
