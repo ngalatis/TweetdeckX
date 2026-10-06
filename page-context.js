@@ -456,6 +456,87 @@
     })();
   }
 
+  // --- Back ---
+  // Every column is a frame in the same tab, so they all share one session
+  // history and history.back() steps back whichever column navigated last.
+  // The frames are sandboxed, and a sandboxed frame may not navigate its
+  // siblings, so when that was another column the browser drops the
+  // traversal without an error and the button does nothing. Back is
+  // resolved against this frame's own entries instead. The previous view is
+  // traversed to when nothing else has navigated since, which keeps X's
+  // scroll position; when the browser refuses, X's router replaces the
+  // current view with it in place. Replacing rather than pushing keeps this
+  // frame's entries in step with the views the user went through, so the
+  // next back still finds the one before. With no earlier view the column
+  // returns to its own start page.
+  function sameView(a, b) {
+    try {
+      var ua = new URL(a, location.href);
+      var ub = new URL(b, location.href);
+      var params = function (u) {
+        return Array.from(u.searchParams).map(function (p) { return p.join('='); }).sort().join('&');
+      };
+      return ua.origin === ub.origin
+        && ua.pathname.replace(/\/$/, '') === ub.pathname.replace(/\/$/, '')
+        && params(ua) === params(ub);
+    } catch (e) {
+      return a === b;
+    }
+  }
+
+  function goBack(homeUrl) {
+    var nav = window.navigation;
+    if (!nav || !nav.currentEntry) {
+      history.back();
+      return;
+    }
+    var entries = nav.entries();
+    var target = null;
+    for (var i = nav.currentEntry.index - 1; i >= 0; i--) {
+      if (entries[i].url && !sameView(entries[i].url, location.href)) {
+        target = entries[i];
+        break;
+      }
+    }
+    if (!target) {
+      if (homeUrl && !sameView(homeUrl, location.href)) replaceInPlace(homeUrl);
+      return;
+    }
+    var from = location.href;
+    var fallback = function () {
+      if (location.href === from) replaceInPlace(target.url);
+    };
+    try {
+      var result = nav.traverseTo(target.key);
+      result.finished.catch(function () {});
+      result.committed.catch(fallback);
+    } catch (e) {
+      fallback();
+    }
+  }
+
+  // Shows another view of this site in place of the current one, through
+  // X's router when it can be reached and with a page load otherwise.
+  function replaceInPlace(url) {
+    var target;
+    try { target = new URL(url, location.href); } catch (e) { return; }
+    if (target.origin !== location.origin) return;
+    var from = location.href;
+    try {
+      var h = findHistory();
+      if (h && typeof h.replace === 'function') h.replace(target.pathname + target.search + target.hash);
+    } catch (e) {}
+    var started = Date.now();
+    (function check() {
+      if (location.href !== from) return;
+      if (Date.now() - started >= 1200) {
+        location.replace(target.href);
+        return;
+      }
+      setTimeout(check, 50);
+    })();
+  }
+
   window.addEventListener('message', function (e) {
     if (!e.data) return;
     if (e.data.type === 'tweetdeckx-pause') {
@@ -466,6 +547,8 @@
       refreshInPlace();
     } else if (e.data.type === 'tweetdeckx-navigate' && typeof e.data.url === 'string') {
       navigateInPlace(e.data.url);
+    } else if (e.data.type === 'tweetdeckx-back') {
+      goBack(typeof e.data.home === 'string' ? e.data.home : null);
     }
   });
 

@@ -1307,9 +1307,13 @@
 
       const action = btn.dataset.action;
       if (action === 'back') {
+        // The frame steps back through its own views (see goBack in
+        // page-context.js) and falls back to the column's start page
         const iframe = colEl.querySelector('iframe');
         if (iframe) {
-          try { iframe.contentWindow.postMessage({ type: 'tweetdeckx-back' }, '*'); } catch (err) {}
+          try {
+            iframe.contentWindow.postMessage({ type: 'tweetdeckx-back', home: getCanonicalUrl(col) }, '*');
+          } catch (err) {}
         }
       } else if (action === 'refresh') {
         if (!canSpend(col)) {

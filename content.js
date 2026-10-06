@@ -7,7 +7,7 @@
   // Only apply in iframe context (not when user visits x.com normally)
   if (window === window.top) return;
 
-  // Pause/resume, in-place refresh and navigation are handled by
+  // Pause/resume, in-place refresh, navigation and back are handled by
   // page-context.js (MAIN world), which listens for the same messages.
 
   // -------------------------------------------------------
@@ -44,9 +44,6 @@
     }
     if (e.data && e.data.type === 'tweetdeckx-set-column-width') {
       document.documentElement.style.setProperty('--tweetdeckx-col-width', e.data.width + 'px');
-    }
-    if (e.data && e.data.type === 'tweetdeckx-back') {
-      window.history.back();
     }
     if (e.data && e.data.type === 'tweetdeckx-get-newest-post-time') {
       reportNewestPostTime();
