@@ -484,20 +484,24 @@
     }
   }
 
+  // The closest of this frame's earlier entries that shows a different view
+  function previousView() {
+    var nav = window.navigation;
+    if (!nav || !nav.currentEntry) return null;
+    var entries = nav.entries();
+    for (var i = nav.currentEntry.index - 1; i >= 0; i--) {
+      if (entries[i].url && !sameView(entries[i].url, location.href)) return entries[i];
+    }
+    return null;
+  }
+
   function goBack(homeUrl) {
     var nav = window.navigation;
     if (!nav || !nav.currentEntry) {
       history.back();
       return;
     }
-    var entries = nav.entries();
-    var target = null;
-    for (var i = nav.currentEntry.index - 1; i >= 0; i--) {
-      if (entries[i].url && !sameView(entries[i].url, location.href)) {
-        target = entries[i];
-        break;
-      }
-    }
+    var target = previousView();
     if (!target) {
       if (homeUrl && !sameView(homeUrl, location.href)) replaceInPlace(homeUrl);
       return;
@@ -536,6 +540,19 @@
       setTimeout(check, 50);
     })();
   }
+
+  // X's own back arrow steps back through history.back() too, so it is
+  // taken over whenever this frame has a view to go back to. Stopping the
+  // click at the document keeps it from reaching React's handlers on X's
+  // root. Without an earlier view X handles it and opens its own fallback.
+  document.addEventListener('click', function (e) {
+    var el = e.target;
+    var btn = el && el.closest ? el.closest('[data-testid="app-bar-back"]') : null;
+    if (!btn || !previousView()) return;
+    e.preventDefault();
+    e.stopPropagation();
+    goBack(null);
+  }, true);
 
   window.addEventListener('message', function (e) {
     if (!e.data) return;
