@@ -20,6 +20,7 @@
   --danger: #f4212e;
   --danger-hover: #d91c26;
   --sidebar-width: 56px;
+  --dock-width: 0px; /* notifications panel, set by deck.js while it is open */
   --column-width: 420px;
   --column-gap: 2px;
   --header-height: 46px;
@@ -129,7 +130,7 @@ html, body {
   width: 100%;
   overflow-y: auto;
   overflow-x: hidden;
-  max-height: calc(100vh - 180px);
+  max-height: calc(100vh - 280px);
   scrollbar-width: none;
 }
 #page-nav::-webkit-scrollbar { display: none; }
@@ -192,12 +193,37 @@ html, body {
   color: var(--text-primary);
 }
 
+.sidebar-btn.active {
+  background: var(--accent-muted);
+  color: var(--accent);
+}
+
+.sidebar-btn.compose-btn {
+  border-radius: 50%;
+  background: var(--accent);
+  color: #fff;
+  margin-bottom: 4px;
+}
+
+.sidebar-btn.compose-btn:hover {
+  background: var(--accent-hover);
+  color: #fff;
+}
+
+.sidebar-divider {
+  width: 24px;
+  height: 1px;
+  background: var(--border-color);
+  margin: 10px 0;
+  flex-shrink: 0;
+}
+
 /* =========================================
    Main Column Area
    ========================================= */
 
 #columns-container {
-  margin-left: var(--sidebar-width);
+  margin-left: calc(var(--sidebar-width) + var(--dock-width));
   height: 100vh;
   overflow-x: auto;
   overflow-y: hidden;
@@ -357,6 +383,64 @@ html, body {
 }
 
 /* =========================================
+   Notifications Panel (docked next to the sidebar)
+   ========================================= */
+
+.dock-panel {
+  position: fixed;
+  left: var(--sidebar-width);
+  top: 0;
+  bottom: 0;
+  width: var(--dock-width);
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-column);
+  border-right: 1px solid var(--border-color);
+  z-index: 90;
+}
+
+.dock-panel.hidden {
+  display: none;
+}
+
+.dock-header {
+  cursor: default;
+}
+
+.dock-header:active {
+  cursor: default;
+}
+
+/* =========================================
+   Compose Overlay
+   ========================================= */
+
+.compose-overlay {
+  align-items: flex-start;
+}
+
+.compose-box {
+  margin-top: 6vh;
+  max-width: 92vw;
+  height: min(640px, 88vh);
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: 16px;
+  overflow: hidden;
+  box-shadow: var(--shadow-modal);
+  animation: modalIn 0.2s ease;
+}
+
+.compose-frame {
+  flex: 1;
+  border: none;
+  width: 100%;
+  background: var(--bg-primary);
+}
+
+/* =========================================
    Lightbox Expansion
    ========================================= */
 
@@ -382,6 +466,17 @@ html, body {
 
 .deck-column.lightbox-active .column-frame {
   height: 100%;
+}
+
+.dock-panel.lightbox-active {
+  inset: 0;
+  width: 100%;
+  z-index: 9999;
+  border-right: none;
+}
+
+.dock-panel.lightbox-active .column-header {
+  display: none;
 }
 
 .column-loading {
@@ -713,7 +808,7 @@ html, body {
 
 #empty-state {
   position: fixed;
-  left: var(--sidebar-width);
+  left: calc(var(--sidebar-width) + var(--dock-width));
   top: 0;
   right: 0;
   bottom: 0;
@@ -1105,7 +1200,7 @@ html, body {
 .toast {
   position: fixed;
   top: 0;
-  left: var(--sidebar-width);
+  left: calc(var(--sidebar-width) + var(--dock-width));
   right: 0;
   z-index: 180;
   display: flex;

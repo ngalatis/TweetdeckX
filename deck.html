@@ -18,6 +18,18 @@
           <rect x="14" y="14" width="9" height="9" rx="1.5" fill="currentColor" opacity="0.3"/>
         </svg>
       </div>
+      <button id="btn-compose" class="sidebar-btn compose-btn" title="Compose post">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+          <path d="M12 20h9" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M16.5 3.5a2.12 2.12 0 013 3L7 19l-4 1 1-4L16.5 3.5z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </button>
+      <button id="btn-notifications" class="sidebar-btn" title="Notifications">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+          <path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9M13.73 21a2 2 0 01-3.46 0" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </button>
+      <div class="sidebar-divider"></div>
       <nav id="page-nav">
         <!-- Page tabs injected by deck.js -->
       </nav>
@@ -37,10 +49,48 @@
     </div>
   </aside>
 
+  <!-- Notifications panel, docked next to the sidebar on every page.
+       Lives outside #columns-container so none of the column code sees it. -->
+  <aside id="dock-panel" class="dock-panel hidden">
+    <div class="column-header dock-header">
+      <button class="col-btn col-back" data-dock-action="back" title="Back" style="display: none">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M19 12H5M12 19l-7-7 7-7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
+      <div class="column-header-left">
+        <span class="column-icon">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9M13.73 21a2 2 0 01-3.46 0" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </span>
+        <div class="column-title">Notifications</div>
+      </div>
+      <div class="column-header-right">
+        <span class="column-budget hidden"></span>
+        <button class="col-btn" data-dock-action="refresh" title="Refresh">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><polyline points="23 4 23 10 17 10" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+        <button class="col-btn" data-dock-action="close" title="Close">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><line x1="18" y1="6" x2="6" y2="18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><line x1="6" y1="6" x2="18" y2="18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+        </button>
+      </div>
+    </div>
+    <div class="column-loading">
+      <div class="spinner"></div>
+      <div class="loading-note"></div>
+    </div>
+  </aside>
+
   <!-- Main Column Area -->
   <main id="columns-container">
     <!-- Page wrappers created dynamically by deck.js -->
   </main>
+
+  <!-- Compose overlay (X's own composer, loaded on first use) -->
+  <div id="compose-overlay" class="modal-overlay compose-overlay hidden">
+    <div id="compose-box" class="compose-box">
+      <div class="column-loading">
+        <div class="spinner"></div>
+      </div>
+    </div>
+  </div>
 
   <!-- Add Column Modal -->
   <div id="modal-overlay" class="modal-overlay hidden">
