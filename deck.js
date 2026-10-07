@@ -1635,8 +1635,8 @@
     const wrapper = getActiveWrapper();
     if (!wrapper) return;
 
-    const fromEl = wrapper.querySelector(`[data-id="${fromId}"]`);
-    const toEl = wrapper.querySelector(`[data-id="${toId}"]`);
+    const fromEl = wrapper.querySelector(`[data-id="${CSS.escape(fromId)}"]`);
+    const toEl = wrapper.querySelector(`[data-id="${CSS.escape(toId)}"]`);
     if (!fromEl || !toEl) return;
 
     // If the dragged element was before the target, insert after; otherwise insert before
