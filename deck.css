@@ -210,6 +210,34 @@ html, body {
   color: #fff;
 }
 
+/* Unread notifications on the bell */
+#btn-notifications {
+  position: relative;
+}
+
+.sidebar-badge {
+  position: absolute;
+  top: 3px;
+  right: 1px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 8px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 16px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  box-shadow: 0 0 0 2px var(--bg-secondary);
+  pointer-events: none;
+}
+
+.sidebar-badge.hidden {
+  display: none;
+}
+
 .sidebar-divider {
   width: 24px;
   height: 1px;

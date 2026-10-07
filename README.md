@@ -11,7 +11,7 @@ A free, open-source Chrome extension that brings back the TweetDeck-style multi-
 
 - **Multi-column layout** — view Home, Explore, Notifications, Messages, Bookmarks, Search, User profiles, Lists, and Likes side by side
 - **Custom columns** — add any X.com URL as a column
-- **Notifications panel**: the bell in the sidebar docks your notifications next to the sidebar on every page, so you can check them without switching pages
+- **Notifications panel**: the bell in the sidebar docks your notifications next to the sidebar on every page, so you can check them without switching pages. A badge on the bell shows your unread count
 - **Compose from anywhere**: the blue pen button in the sidebar opens X's own composer over whichever page you're on
 - **Adjustable column width** — resize columns to your preference
 - **Dark/light theme** — follows your preference
@@ -68,6 +68,7 @@ X rate limits its own website per user and per endpoint, in 15 minute windows. S
 - **The deck knows its budget.** Every X response carries `x-rate-limit-remaining` and `x-rate-limit-reset` headers. Each column reads them off its own responses, so the deck knows which endpoint a column actually spends on, shows the remaining calls on its header (for example `12/50`, hover for details), and will not load or refresh it when that endpoint has fewer than 3 calls left. Columns that have to wait say so and load themselves when the window resets.
 - **A 429 pauses exactly as long as X says.** A toast names the endpoint and the reset time X sent, and the column header shows `0/50` until then. X's `backoff-policy` header is honoured across all columns too.
 - **The notifications panel and the composer follow the same rules.** The panel loads only when you open it, is awake only while your pointer rests on it (resting on a column puts it back to sleep), refreshes in place in the background while open, and does nothing while closed. The composer loads the first time you use it and is reused after that, so composing again doesn't boot X again. It stays awake for 5 minutes after it closes, so a post still uploading media isn't paused mid-send.
+- **The unread badge costs nothing.** It shows the count X's own badge poll returns in whichever column or panel is awake, so it catches up whenever you use the deck and keeps its last value while you're away.
 - **Telemetry is stubbed.** X's client event, error log and app context beacons are answered locally so they never count against you.
 
 ## Known Issues

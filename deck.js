@@ -3311,6 +3311,36 @@
     if (e.target === composeOverlay) closeCompose();
   });
 
+  // -----------------------------------------
+  // Notification badge
+  // -----------------------------------------
+  // The unread count on the bell is whatever X's own badge poll last
+  // returned in any of the deck's frames (see reportBadgeCount in
+  // page-context.js), so it costs no calls. X only polls in an awake frame,
+  // so the count catches up whenever a column or the panel is woken and
+  // holds its last value while the deck is idle. Several frames can report,
+  // so the newest response wins.
+
+  const notificationsBadge = dockToggleBtn.querySelector('.sidebar-badge');
+  let badgeCountAt = 0;
+
+  function isDeckFrame(source) {
+    return !!findColumnElForSource(source) || isDockSource(source)
+      || (!!composeIframe && composeIframe.contentWindow === source);
+  }
+
+  window.addEventListener('message', (e) => {
+    if (!e.data || e.data.type !== 'tweetdeckx-badge-count') return;
+    const n = e.data.notifications;
+    const at = e.data.at;
+    if (!Number.isInteger(n) || n < 0 || typeof at !== 'number') return;
+    if (!isDeckFrame(e.source) || at < badgeCountAt) return;
+    badgeCountAt = at;
+    notificationsBadge.textContent = n > 99 ? '99+' : String(n);
+    notificationsBadge.classList.toggle('hidden', n === 0);
+    dockToggleBtn.title = n ? `Notifications (${n} unread)` : 'Notifications';
+  });
+
   window.addEventListener('message', (e) => {
     if (!e.data || !composeIframe || e.source !== composeIframe.contentWindow) return;
     if (e.data.type === 'tweetdeckx-navigate-result') {

@@ -71,9 +71,10 @@
     }
     // Forward the outcome of an in-place refresh or navigation so the deck
     // knows whether to fall back to a full reload, and the rate-limit
-    // headers of each API response so it knows this column's budget
+    // headers of each API response so it knows this column's budget, and
+    // the unread count X's own badge poll returned
     if (e.data && (e.data.type === 'tweetdeckx-refresh-result' || e.data.type === 'tweetdeckx-navigate-result'
-      || e.data.type === 'tweetdeckx-api-response')) {
+      || e.data.type === 'tweetdeckx-api-response' || e.data.type === 'tweetdeckx-badge-count')) {
       try { window.parent.postMessage(e.data, '*'); } catch (err) {}
     }
   });
