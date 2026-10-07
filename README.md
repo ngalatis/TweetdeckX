@@ -41,7 +41,7 @@ A free, open-source Chrome extension that brings back the TweetDeck-style multi-
 3. Click the **+** button in the sidebar to add columns
 4. Drag columns in the sidebar to reorder them
 5. Click the bell in the sidebar to show or hide the notifications panel. It stays open across pages and when you reopen the deck
-6. Click the pen button in the sidebar to write a post. Once the post is sent, or you close X's composer, the composer goes away. Press `Escape` or click outside it to hide it and keep your draft for later
+6. Click the pen button in the sidebar to write a post. Once the post is sent, or you close X's composer, the composer goes away. Click outside it to hide it and keep your draft for later
 
 ## Keyboard Shortcuts
 
