@@ -180,6 +180,11 @@
     return /\/2\/badge_count\/badge_count\.json/.test(url);
   }
 
+  function reportBadgeData(data) {
+    if (!data || typeof data.ntab_unread_count !== 'number') return;
+    emit({ type: 'tweetdeckx-badge-count', notifications: data.ntab_unread_count, at: Date.now() });
+  }
+
   function reportBadgeCount(xhr) {
     var data = null;
     try {
@@ -189,9 +194,31 @@
     } catch (e) {
       return;
     }
-    if (!data || typeof data.ntab_unread_count !== 'number') return;
-    emit({ type: 'tweetdeckx-badge-count', notifications: data.ntab_unread_count, at: Date.now() });
+    reportBadgeData(data);
   }
+
+  // X's rebuilt web client (x-web) makes its API calls with fetch rather
+  // than XMLHttpRequest, so the badge response is read off fetch too. Only
+  // badge_count responses are touched, through a clone made before X reads
+  // the body, and X always gets its own promise back unchanged.
+  try {
+    var _fetch = window.fetch;
+    if (typeof _fetch === 'function') {
+      window.fetch = function (input) {
+        var p = _fetch.apply(this, arguments);
+        try {
+          var url = typeof input === 'string' ? input : (input && input.url) || String(input);
+          if (isBadgeCountUrl(url)) {
+            p.then(function (res) {
+              if (!res || res.status !== 200) return;
+              return res.clone().json().then(reportBadgeData);
+            }).catch(function () {});
+          }
+        } catch (e) {}
+        return p;
+      };
+    }
+  } catch (e) {}
 
   try {
     var XHR = XMLHttpRequest.prototype;
