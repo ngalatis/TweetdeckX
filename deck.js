@@ -251,7 +251,7 @@
   let state = {
     pages: [],
     activePageId: null,
-    settings: { columnWidth: 420, theme: 'dark', hideAds: false, hideColumnHeader: false, keyboardShortcuts: false },
+    settings: { columnWidth: 420, theme: 'dark', hideAds: false, hideColumnHeader: false, keyboardShortcuts: false, notificationsPanel: false },
   };
 
   // -----------------------------------------
@@ -416,6 +416,8 @@
   const pendingRefreshes = new Map();   // Map<columnId, (ok) => void> awaiting tweetdeckx-refresh-result
   const pendingNavigations = new Map(); // Map<columnId, (ok) => void> awaiting tweetdeckx-navigate-result
   const refreshFailures = new Map();    // Map<columnId, consecutive in-place refreshes that fetched nothing>
+  let dockAwake = false;           // the notifications panel is resumed (see wakeDock)
+  let dockIdleTimer = null;        // pauses the notifications panel after inactivity
 
   // Per-column runtime state that is NOT persisted. Populated as iframes
   // report their current URL via the 'tweetdeckx-url-changed' message and
@@ -477,6 +479,7 @@
   }
 
   function activateColumn(colId) {
+    sleepDock();
     if (activeColumnId && activeColumnId !== colId) {
       pauseColumn(activeColumnId);
     }
@@ -871,15 +874,15 @@
     lightboxBackdrop.className = 'lightbox-backdrop';
     document.body.appendChild(lightboxBackdrop);
 
-    // Expand the column
-    const colEl = iframe.closest('.deck-column');
+    // Expand the column (or the notifications panel)
+    const colEl = iframe.closest('.deck-column, .dock-panel');
     if (colEl) colEl.classList.add('lightbox-active');
   }
 
   function collapseIframeFromLightbox() {
     if (!lightboxIframe) return;
 
-    const colEl = lightboxIframe.closest('.deck-column');
+    const colEl = lightboxIframe.closest('.deck-column, .dock-panel');
     if (colEl) colEl.classList.remove('lightbox-active');
 
     if (lightboxBackdrop) {
@@ -895,6 +898,10 @@
     if (e.data.type === 'tweetdeckx-lightbox-opened') {
       // For videos, don't expand — let X.com's native fullscreen button work
       if (e.data.hasVideo) return;
+      if (isDockSource(e.source)) {
+        expandIframeForLightbox(dockIframe);
+        return;
+      }
       const iframes = columnsContainer.querySelectorAll('iframe');
       for (const iframe of iframes) {
         if (iframe.contentWindow === e.source) {
@@ -1431,6 +1438,7 @@
         }, '*');
       } catch (e) { /* Cross-origin — content script handles it */ }
     });
+    postToDock({ type: 'tweetdeckx-set-hide-column-header', enabled: state.settings.hideColumnHeader });
   }
 
   function broadcastKeyboardShortcuts() {
@@ -2530,6 +2538,7 @@
       col.style.flex = `0 0 ${val}px`;
       col.style.width = val + 'px';
     });
+    setDockWidth();
   });
 
   themeSelect.addEventListener('change', () => {
@@ -2594,6 +2603,7 @@
       if (!modalOverlay.classList.contains('hidden')) closeModal();
       if (!settingsOverlay.classList.contains('hidden')) closeSettingsModal();
       if (!pageModalOverlay.classList.contains('hidden')) closePageModal();
+      closeCompose();
       closeAllDropdowns();
     }
   });
@@ -2709,12 +2719,22 @@
     if (!action || typeof action.type !== 'string') return;
     if ('index' in action && !Number.isInteger(action.index)) return;
     const colEl = findColumnElForSource(e.source);
-    if (colEl) runShortcut(action, colEl);
+    if (colEl) {
+      runShortcut(action, colEl);
+    } else if (isDockSource(e.source)) {
+      if (action.type === 'back') dockBack();
+      else runShortcut(action, null);
+    }
   });
 
   window.addEventListener('message', (e) => {
     if (!e.data || e.data.type !== 'tweetdeckx-frame-focus') return;
     if (!state.settings.keyboardShortcuts) return;
+    if (isDockSource(e.source)) {
+      // Keys now go to the panel, so no column is highlighted as taking them
+      if (e.data.focused) markKeyboardFocus(null);
+      return;
+    }
     const colEl = findColumnElForSource(e.source);
     if (!colEl) return;
     if (e.data.focused) {
@@ -2848,18 +2868,22 @@
     columnsContainer.querySelectorAll('.deck-column').forEach((colEl) => {
       const span = colEl.querySelector('.column-budget');
       if (!span) return;
-      const col = findColumn(colEl.dataset.id);
-      const b = col && budgetFor(col);
-      if (!b) {
-        span.classList.add('hidden');
-        return;
-      }
-      const wait = formatWait(Math.max(0, b.reset * 1000 - Date.now()));
-      span.textContent = `${b.remaining}/${b.limit}`;
-      span.title = `${b.op}: ${b.remaining} of ${b.limit} calls left, resets in ${wait}`;
-      span.classList.toggle('low', b.remaining <= BUDGET_RESERVE);
-      span.classList.remove('hidden');
+      renderBudgetIndicator(span, findColumn(colEl.dataset.id));
     });
+    renderBudgetIndicator(dockBudget, dockIframe ? DOCK_COL : null);
+  }
+
+  function renderBudgetIndicator(span, col) {
+    const b = col && budgetFor(col);
+    if (!b) {
+      span.classList.add('hidden');
+      return;
+    }
+    const wait = formatWait(Math.max(0, b.reset * 1000 - Date.now()));
+    span.textContent = `${b.remaining}/${b.limit}`;
+    span.title = `${b.op}: ${b.remaining} of ${b.limit} calls left, resets in ${wait}`;
+    span.classList.toggle('low', b.remaining <= BUDGET_RESERVE);
+    span.classList.remove('hidden');
   }
 
   function scheduleBudgetIndicatorUpdate() {
@@ -2900,6 +2924,438 @@
   }
 
   document.getElementById('update-toast-close').addEventListener('click', dismissUpdateToast);
+
+  // Settings a panel or compose frame starts with. Columns send theirs in
+  // loadIframeForColumn.
+  function sendFrameInit(iframe, { hideColumnHeader, keyboardShortcuts }) {
+    try {
+      iframe.contentWindow.postMessage({
+        type: 'tweetdeckx-init',
+        hideAds: state.settings.hideAds,
+        hideColumnHeader,
+        keyboardShortcuts,
+      }, '*');
+      iframe.contentWindow.postMessage({
+        type: 'tweetdeckx-set-column-width',
+        width: state.settings.columnWidth,
+      }, '*');
+    } catch (e) {
+      // Cross-origin, content script handles it
+    }
+  }
+
+  const FRAME_SANDBOX = 'allow-same-origin allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox';
+  const FRAME_ALLOW = 'autoplay; encrypted-media; fullscreen';
+
+  // -----------------------------------------
+  // Notifications panel
+  // -----------------------------------------
+  // X's notifications page in a panel docked next to the sidebar, so it can
+  // be read from any page. It sits outside #columns-container and isn't a
+  // .deck-column, so the column code (pausing, message routing, drag and
+  // drop, page switching, reset) never sees it. It follows the column
+  // rules on its own: loaded only when opened and its endpoint has budget,
+  // awake only while the pointer rests on it, refreshed in place in the
+  // background while open, and paused and left alone while closed.
+
+  const DOCK_COL = { id: 'dock-notifications', type: 'notifications', param: null };
+  const dockPanel = document.getElementById('dock-panel');
+  const dockToggleBtn = document.getElementById('btn-notifications');
+  const dockBackBtn = dockPanel.querySelector('[data-dock-action="back"]');
+  const dockRefreshBtn = dockPanel.querySelector('[data-dock-action="refresh"]');
+  const dockBudget = dockPanel.querySelector('.column-budget');
+  let dockIframe = null;
+  let dockLoadTimer = null;      // pending load: the start-up stagger or a budget wait
+  let dockRefreshTimer = null;   // background refresh cycle while open
+  let dockRefreshPending = null; // (ok, superseded) => void awaiting tweetdeckx-refresh-result
+  let dockRefreshFailures = 0;
+  let dockLastRefreshAt = 0;
+  let dockHoverTimer = null;
+
+  function isDockSource(source) {
+    return !!dockIframe && dockIframe.contentWindow === source;
+  }
+
+  function postToDock(msg) {
+    if (!dockIframe) return;
+    try { dockIframe.contentWindow.postMessage(msg, '*'); } catch (e) {}
+  }
+
+  function setDockWidth() {
+    document.documentElement.style.setProperty('--dock-width',
+      state.settings.notificationsPanel ? state.settings.columnWidth + 'px' : '0px');
+  }
+
+  function openDock({ delayLoad = false } = {}) {
+    state.settings.notificationsPanel = true;
+    saveState();
+    setDockWidth();
+    dockPanel.classList.remove('hidden');
+    dockToggleBtn.classList.add('active');
+    if (!dockIframe) {
+      if (delayLoad) scheduleDockLoad(randomStagger());
+      else loadDock();
+      return;
+    }
+    // Catch up if it went stale while closed, like a page switched back to
+    if (Date.now() - dockLastRefreshAt >= STALE_AFTER_MS) refreshDock({ allowReload: false });
+    resetDockRefreshTimer();
+  }
+
+  // The frame is kept, paused, so opening the panel again is instant
+  function closeDock() {
+    state.settings.notificationsPanel = false;
+    saveState();
+    setDockWidth();
+    dockPanel.classList.add('hidden');
+    dockToggleBtn.classList.remove('active');
+    clearTimeout(dockHoverTimer);
+    clearTimeout(dockLoadTimer);
+    clearTimeout(dockRefreshTimer);
+    sleepDock();
+  }
+
+  function scheduleDockLoad(ms) {
+    clearTimeout(dockLoadTimer);
+    dockLoadTimer = setTimeout(loadDock, ms);
+  }
+
+  function loadDock() {
+    clearTimeout(dockLoadTimer);
+    if (dockIframe || !state.settings.notificationsPanel) return;
+    const loadingEl = dockPanel.querySelector('.column-loading');
+    if (!loadingEl) return;
+
+    // Same rule as loadIframeForColumn: booting X into an exhausted budget
+    // only spends what is left, so wait for the window to reset
+    if (!canSpend(DOCK_COL)) {
+      const note = loadingEl.querySelector('.loading-note');
+      const b = budgetFor(DOCK_COL);
+      const wait = formatWait(waitFor(DOCK_COL));
+      note.textContent = b
+        ? `Waiting for X's ${b.op} rate limit to reset (${wait})`
+        : `Waiting for X's rate limit to reset (${wait})`;
+      scheduleDockLoad(Math.max(1000, waitFor(DOCK_COL)));
+      return;
+    }
+
+    const iframe = document.createElement('iframe');
+    iframe.className = 'column-frame';
+    iframe.sandbox = FRAME_SANDBOX;
+    iframe.allow = FRAME_ALLOW;
+    iframe.src = getCanonicalUrl(DOCK_COL);
+    iframe.addEventListener('load', () => {
+      sendFrameInit(iframe, {
+        hideColumnHeader: state.settings.hideColumnHeader,
+        keyboardShortcuts: state.settings.keyboardShortcuts,
+      });
+      // Boot visible for a moment, then pause unless the user is on it
+      setTimeout(() => {
+        if (!dockAwake) postToDock({ type: 'tweetdeckx-pause' });
+      }, RESUME_BURST_MS);
+    });
+    loadingEl.replaceWith(iframe);
+    dockIframe = iframe;
+    dockLastRefreshAt = Date.now();
+    resetDockRefreshTimer();
+    updateBudgetIndicators();
+  }
+
+  // Same shape as refreshColumn: an in-place refresh, and a reload only
+  // when that fetched nothing and reloading is allowed.
+  function refreshDock({ allowReload = true } = {}) {
+    if (!dockIframe) return;
+    if (!canSpend(DOCK_COL)) {
+      updateBudgetIndicators();
+      return;
+    }
+    if (dockRefreshPending) dockRefreshPending(false, true);
+    const iframe = dockIframe;
+    dockRefreshBtn.classList.add('refreshing');
+    let timer = null;
+    const finish = (ok, superseded) => {
+      clearTimeout(timer);
+      if (dockRefreshPending === finish) dockRefreshPending = null;
+      if (superseded) return; // a newer refresh took over
+      dockRefreshBtn.classList.remove('refreshing');
+      if (ok) {
+        dockLastRefreshAt = Date.now();
+        dockRefreshFailures = 0;
+        return;
+      }
+      dockRefreshFailures++;
+      if (!allowReload || !iframe.isConnected) return;
+      dockLastRefreshAt = Date.now();
+      dockRefreshFailures = 0;
+      iframe.src = getCanonicalUrl(DOCK_COL);
+    };
+    // The frame answers within 1.5s; the margin covers message delivery
+    timer = setTimeout(() => finish(false), 3000);
+    dockRefreshPending = finish;
+    postToDock({ type: 'tweetdeckx-refresh' });
+  }
+
+  // Background refresh while open, on the same cycle as an on-screen
+  // column. Skipped while the user is on it, and after three refreshes that
+  // fetched nothing a reload is allowed once.
+  function resetDockRefreshTimer() {
+    clearTimeout(dockRefreshTimer);
+    const tick = () => {
+      if (state.settings.notificationsPanel && dockIframe && !dockAwake) {
+        refreshDock({ allowReload: dockRefreshFailures >= 3 });
+      }
+      dockRefreshTimer = setTimeout(tick, jitteredInterval());
+    };
+    dockRefreshTimer = setTimeout(tick, jitteredInterval());
+  }
+
+  function dockBack() {
+    if (dockBackBtn.style.display === 'none') return;
+    postToDock({ type: 'tweetdeckx-back', home: getCanonicalUrl(DOCK_COL) });
+  }
+
+  // Only one frame is awake at a time: waking the panel pauses the active
+  // column, and activateColumn puts the panel back to sleep.
+  function wakeDock() {
+    if (!dockIframe || !state.settings.notificationsPanel) return;
+    if (!dockAwake) {
+      deactivateActiveColumn();
+      dockAwake = true;
+      postToDock({ type: 'tweetdeckx-resume' });
+      resetDockRefreshTimer();
+    }
+    clearTimeout(dockIdleTimer);
+    dockIdleTimer = setTimeout(sleepDock, IDLE_TIMEOUT);
+  }
+
+  function sleepDock() {
+    clearTimeout(dockIdleTimer);
+    dockIdleTimer = null;
+    if (!dockAwake) return;
+    dockAwake = false;
+    postToDock({ type: 'tweetdeckx-pause' });
+  }
+
+  dockToggleBtn.addEventListener('click', () => {
+    if (state.settings.notificationsPanel) closeDock();
+    else openDock();
+  });
+
+  dockPanel.querySelector('.dock-header').addEventListener('click', (e) => {
+    const btn = e.target.closest('[data-dock-action]');
+    if (!btn) return;
+    const action = btn.dataset.dockAction;
+    if (action === 'back') {
+      dockBack();
+    } else if (action === 'refresh') {
+      if (!canSpend(DOCK_COL)) showBudgetToast(DOCK_COL);
+      else if (dockIframe) refreshDock();
+      else loadDock();
+      wakeDock();
+    } else if (action === 'close') {
+      closeDock();
+    }
+  });
+
+  // Same activation as a column: the pointer has to rest on the panel
+  dockPanel.addEventListener('mouseenter', () => {
+    if (dockAwake) {
+      wakeDock();
+      return;
+    }
+    clearTimeout(dockHoverTimer);
+    dockHoverTimer = setTimeout(() => {
+      dockHoverTimer = null;
+      wakeDock();
+    }, HOVER_ACTIVATE_MS);
+  });
+
+  dockPanel.addEventListener('mouseleave', () => {
+    clearTimeout(dockHoverTimer);
+    dockHoverTimer = null;
+    if (dockAwake) wakeDock(); // restart the idle countdown
+  });
+
+  dockPanel.addEventListener('wheel', wakeDock, { passive: true });
+
+  // Focus moving into the panel's frame, and keeping it there
+  window.addEventListener('blur', () => {
+    setTimeout(() => {
+      if (dockIframe && document.activeElement === dockIframe) wakeDock();
+    }, 0);
+  });
+
+  setInterval(() => {
+    if (dockIframe && document.activeElement === dockIframe) wakeDock();
+  }, 10000);
+
+  window.addEventListener('message', (e) => {
+    if (!e.data || !isDockSource(e.source)) return;
+    if (e.data.type === 'tweetdeckx-refresh-result') {
+      if (dockRefreshPending) dockRefreshPending(!!e.data.ok);
+    } else if (e.data.type === 'tweetdeckx-url-changed' && typeof e.data.url === 'string') {
+      const away = !urlsEquivalent(e.data.url, getCanonicalUrl(DOCK_COL));
+      dockBackBtn.style.display = away ? '' : 'none';
+    } else if (e.data.type === 'tweetdeckx-user-activity') {
+      wakeDock();
+    }
+  });
+
+  // -----------------------------------------
+  // Compose
+  // -----------------------------------------
+  // X's own composer (/compose/post) in an overlay, so a post can be
+  // written from any page. The frame is as wide as a column, the width the
+  // reply composer inside a column already works at. It is loaded on first
+  // use and kept, so composing again is a router push in an already booted
+  // client rather than another boot. X leaves /compose/ once the post is
+  // sent or its composer is closed, and that closes the overlay. Hiding the
+  // overlay with Escape or a click outside it keeps an unfinished draft.
+
+  const COMPOSE_URL = 'https://x.com/compose/post';
+  // How long the frame stays awake after the overlay closes, so a post
+  // still uploading media isn't paused mid-send
+  const COMPOSE_SLEEP_MS = 5 * 60 * 1000;
+  // URL changes this soon after opening are the composer starting up, not
+  // the user leaving it
+  const COMPOSE_SETTLE_MS = 1500;
+  const composeOverlay = document.getElementById('compose-overlay');
+  const composeBox = document.getElementById('compose-box');
+  let composeIframe = null;
+  let composeUrl = null;          // the URL the frame last reported
+  let composeSeen = false;        // the composer has shown since the overlay opened
+  let composeOpenedAt = 0;
+  let composeSleepTimer = null;
+  let composeNavPending = null;   // (ok, superseded) => void awaiting tweetdeckx-navigate-result
+
+  // X also expresses the composer as a modal over another view, as in
+  // /home?@modal=/compose/post (seen in its login redirect), so both forms
+  // count as still composing.
+  function isComposeUrl(url) {
+    try {
+      const u = new URL(url);
+      return u.pathname.startsWith('/compose/') || (u.searchParams.get('@modal') || '').startsWith('/compose/');
+    } catch (e) {
+      return false;
+    }
+  }
+
+  function postToCompose(msg) {
+    if (!composeIframe) return;
+    try { composeIframe.contentWindow.postMessage(msg, '*'); } catch (e) {}
+  }
+
+  function openCompose() {
+    if (!composeOverlay.classList.contains('hidden')) return;
+    closeAllDropdowns();
+    releaseIframeFocus();
+    composeBox.style.width = state.settings.columnWidth + 'px';
+    composeOverlay.classList.remove('hidden');
+    composeOpenedAt = Date.now();
+    clearTimeout(composeSleepTimer);
+    if (!composeIframe) {
+      composeSeen = false;
+      loadCompose();
+    } else {
+      postToCompose({ type: 'tweetdeckx-resume' });
+      composeSeen = !!composeUrl && isComposeUrl(composeUrl);
+      if (!composeSeen) navigateCompose();
+    }
+    composeIframe.focus();
+  }
+
+  function closeCompose() {
+    if (composeOverlay.classList.contains('hidden')) return;
+    composeOverlay.classList.add('hidden');
+    if (composeIframe && document.activeElement === composeIframe) composeIframe.blur();
+    clearTimeout(composeSleepTimer);
+    composeSleepTimer = setTimeout(() => postToCompose({ type: 'tweetdeckx-pause' }), COMPOSE_SLEEP_MS);
+  }
+
+  function loadCompose() {
+    const iframe = document.createElement('iframe');
+    iframe.className = 'compose-frame';
+    iframe.sandbox = FRAME_SANDBOX;
+    iframe.allow = FRAME_ALLOW;
+    iframe.src = COMPOSE_URL;
+    iframe.addEventListener('load', () => {
+      sendFrameInit(iframe, { hideColumnHeader: false, keyboardShortcuts: false });
+    });
+    const loadingEl = composeBox.querySelector('.column-loading');
+    if (loadingEl) loadingEl.replaceWith(iframe);
+    else composeBox.appendChild(iframe);
+    composeIframe = iframe;
+  }
+
+  // Opens the composer in the booted client through X's router, the same
+  // thing X's own Post button does, and reloads into it if that fails.
+  function navigateCompose() {
+    const iframe = composeIframe;
+    if (composeNavPending) composeNavPending(false, true);
+    let timer = null;
+    const finish = (ok, superseded) => {
+      clearTimeout(timer);
+      if (composeNavPending === finish) composeNavPending = null;
+      if (superseded) return;
+      if (!ok && iframe.isConnected) iframe.src = COMPOSE_URL;
+    };
+    // The frame answers within 1.2s; the margin covers message delivery
+    timer = setTimeout(() => finish(false), 2500);
+    composeNavPending = finish;
+    postToCompose({ type: 'tweetdeckx-navigate', url: COMPOSE_URL });
+  }
+
+  document.getElementById('btn-compose').addEventListener('click', openCompose);
+
+  composeOverlay.addEventListener('click', (e) => {
+    if (e.target === composeOverlay) closeCompose();
+  });
+
+  // -----------------------------------------
+  // Notification badge
+  // -----------------------------------------
+  // The unread count on the bell is whatever X's own badge poll last
+  // returned in any of the deck's frames (see reportBadgeCount in
+  // page-context.js), so it costs no calls. X only polls in an awake frame,
+  // so the count catches up whenever a column or the panel is woken and
+  // holds its last value while the deck is idle. Several frames can report,
+  // so the newest response wins.
+
+  const notificationsBadge = dockToggleBtn.querySelector('.sidebar-badge');
+  let badgeCountAt = 0;
+
+  function isDeckFrame(source) {
+    return !!findColumnElForSource(source) || isDockSource(source)
+      || (!!composeIframe && composeIframe.contentWindow === source);
+  }
+
+  window.addEventListener('message', (e) => {
+    if (!e.data || e.data.type !== 'tweetdeckx-badge-count') return;
+    const n = e.data.notifications;
+    const at = e.data.at;
+    if (!Number.isInteger(n) || n < 0 || typeof at !== 'number') return;
+    if (!isDeckFrame(e.source) || at < badgeCountAt) return;
+    badgeCountAt = at;
+    notificationsBadge.textContent = n > 99 ? '99+' : String(n);
+    notificationsBadge.classList.toggle('hidden', n === 0);
+    dockToggleBtn.title = n ? `Notifications (${n} unread)` : 'Notifications';
+  });
+
+  window.addEventListener('message', (e) => {
+    if (!e.data || !composeIframe || e.source !== composeIframe.contentWindow) return;
+    if (e.data.type === 'tweetdeckx-navigate-result') {
+      if (composeNavPending) composeNavPending(!!e.data.ok);
+      return;
+    }
+    if (e.data.type !== 'tweetdeckx-url-changed' || typeof e.data.url !== 'string') return;
+    composeUrl = e.data.url;
+    if (composeOverlay.classList.contains('hidden')) return;
+    if (isComposeUrl(composeUrl)) {
+      composeSeen = true;
+    } else if (composeSeen && Date.now() - composeOpenedAt > COMPOSE_SETTLE_MS) {
+      closeCompose();
+    }
+  });
 
   // -----------------------------------------
   // Init
@@ -2945,6 +3401,10 @@
     } catch (e) {
       // Background not reachable — load without a budget
     }
+
+    // Restore the notifications panel before the columns lay out. Its frame
+    // loads a moment after the first column so the two don't boot at once.
+    if (state.settings.notificationsPanel) openDock({ delayLoad: true });
 
     renderColumns();
 

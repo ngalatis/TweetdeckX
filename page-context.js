@@ -173,6 +173,53 @@
     });
   }
 
+  // X's own unread count, from the badge poll its client runs every 30s
+  // while a frame is awake (and once as it boots). Reading it off that
+  // response is what lets the deck show a count without spending a call.
+  function isBadgeCountUrl(url) {
+    return /\/2\/badge_count\/badge_count\.json/.test(url);
+  }
+
+  function reportBadgeData(data) {
+    if (!data || typeof data.ntab_unread_count !== 'number') return;
+    emit({ type: 'tweetdeckx-badge-count', notifications: data.ntab_unread_count, at: Date.now() });
+  }
+
+  function reportBadgeCount(xhr) {
+    var data = null;
+    try {
+      if (xhr.status !== 200) return;
+      if (xhr.responseType === 'json') data = xhr.response;
+      else if (xhr.responseType === '' || xhr.responseType === 'text') data = JSON.parse(xhr.responseText);
+    } catch (e) {
+      return;
+    }
+    reportBadgeData(data);
+  }
+
+  // X's rebuilt web client (x-web) makes its API calls with fetch rather
+  // than XMLHttpRequest, so the badge response is read off fetch too. Only
+  // badge_count responses are touched, through a clone made before X reads
+  // the body, and X always gets its own promise back unchanged.
+  try {
+    var _fetch = window.fetch;
+    if (typeof _fetch === 'function') {
+      window.fetch = function (input) {
+        var p = _fetch.apply(this, arguments);
+        try {
+          var url = typeof input === 'string' ? input : (input && input.url) || String(input);
+          if (isBadgeCountUrl(url)) {
+            p.then(function (res) {
+              if (!res || res.status !== 200) return;
+              return res.clone().json().then(reportBadgeData);
+            }).catch(function () {});
+          }
+        } catch (e) {}
+        return p;
+      };
+    }
+  } catch (e) {}
+
   try {
     var XHR = XMLHttpRequest.prototype;
     var _open = XHR.open;
@@ -207,6 +254,7 @@
         this.addEventListener('loadend', function () {
           if (timeline) _timelineInFlight = Math.max(0, _timelineInFlight - 1);
           reportResponse(xhr, info.url, timeline);
+          if (isBadgeCountUrl(info.url)) reportBadgeCount(xhr);
         });
       }
       return _send.apply(this, arguments);
